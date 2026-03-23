@@ -608,6 +608,80 @@ def get_exam_questions(
     }
 
 
+@app.get("/exams/{exam_code}/export")
+def export_questions(
+    exam_code: str,
+    status: Optional[str] = None,
+    question_type: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Export all filtered questions as JSON — includes LLM notes, english explanation and spanish translation."""
+    from fastapi.responses import Response
+    import json as _json
+
+    query = (
+        db.query(DBQuestion)
+        .outerjoin(DBTranslation, DBTranslation.question_id == DBQuestion.id)
+        .filter(DBQuestion.exam_code == exam_code)
+    )
+
+    if status:
+        try:
+            rs = ReviewStatus(status)
+            query = query.filter(DBQuestion.review_status == rs)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+
+    if question_type:
+        query = query.filter(DBQuestion.question_type == question_type)
+
+    questions = query.order_by(DBQuestion.question_number).all()
+
+    result = []
+    for q in questions:
+        entry = {
+            "question_number": q.question_number,
+            "question_type": q.question_type,
+            "review_status": str(q.review_status.value if hasattr(q.review_status, 'value') else q.review_status),
+            "english_stem": q.english_stem,
+            "english_options": q.english_options or [],
+            "correct_answer": q.correct_answer,
+            "correct_answers": q.correct_answers or [],
+            "review_notes": q.review_notes or [],
+            "translation": None,
+        }
+        if q.translation:
+            entry["translation"] = {
+                "spanish_stem": q.translation.spanish_stem,
+                "spanish_options": q.translation.spanish_options or [],
+                "spanish_correct_answers": q.translation.spanish_correct_answers or [],
+                "spanish_explanation": q.translation.spanish_explanation,
+                "english_explanation": q.translation.english_explanation,
+            }
+        result.append(entry)
+
+    # Build filename: e.g. MS-900_pending_multiple_choice.json
+    parts = [exam_code]
+    if status:
+        parts.append(status)
+    if question_type:
+        parts.append(question_type)
+    filename = "_".join(parts) + ".json"
+
+    payload = _json.dumps({
+        "exam_code": exam_code,
+        "filters": {"status": status, "question_type": question_type},
+        "total": len(result),
+        "questions": result,
+    }, ensure_ascii=False, indent=2)
+
+    return Response(
+        content=payload,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.get("/exams/{exam_code}/stats")
 def get_exam_stats(exam_code: str, db: Session = Depends(get_db)):
     """Get counts by review_status and translation_status."""

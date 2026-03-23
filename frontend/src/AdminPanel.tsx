@@ -406,6 +406,21 @@ export default function AdminPanel({ onBack, focusQuestion }: AdminPanelProps) {
             >✕ Limpiar</button>
 
             <span className="total-badge">{reviewTotal} preguntas</span>
+
+            <button
+              className="btn-secondary"
+              style={{ padding: "0.4rem 0.8rem", fontSize: "0.85rem", marginLeft: "auto" }}
+              title="Descargar JSON con todas las preguntas filtradas (incluye notas LLM y explicaciones)"
+              onClick={() => {
+                const params = new URLSearchParams();
+                if (reviewFilter) params.set("status", reviewFilter);
+                if (reviewTypeFilter) params.set("question_type", reviewTypeFilter);
+                const url = `http://localhost:8000/exams/${EXAM_CODE}/export?${params.toString()}`;
+                window.open(url, "_blank");
+              }}
+            >
+              ⬇️ Exportar JSON
+            </button>
           </div>
 
           <div className="review-list">
