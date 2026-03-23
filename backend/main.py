@@ -107,6 +107,10 @@ class QuestionPatch(BaseModel):
     review_status: Optional[str] = None
     review_notes: Optional[List[str]] = None
     question_type: Optional[str] = None
+    # Translation fields
+    spanish_stem: Optional[str] = None
+    spanish_options: Optional[List[Dict[str, Any]]] = None
+    spanish_explanation: Optional[str] = None
 
 
 class ImportResult(BaseModel):
@@ -371,6 +375,29 @@ def patch_question(
     if patch.review_notes is not None:
         q.review_notes = patch.review_notes
         updated_fields.append("review_notes")
+
+    # Translation patch — update or create the translation record
+    translation_updates = {k: v for k, v in {
+        "spanish_stem": patch.spanish_stem,
+        "spanish_options": patch.spanish_options,
+        "spanish_explanation": patch.spanish_explanation,
+    }.items() if v is not None}
+
+    if translation_updates:
+        translation = db.query(DBTranslation).filter(DBTranslation.question_id == q.id).first()
+        if translation:
+            for field, value in translation_updates.items():
+                setattr(translation, field, value)
+            db.add(translation)
+        else:
+            translation = DBTranslation(
+                question_id=q.id,
+                exam_code=exam_code,
+                translation_status=TranslationStatus.done,
+                **translation_updates,
+            )
+            db.add(translation)
+        updated_fields.extend(translation_updates.keys())
 
     if patch.review_status is not None:
         try:

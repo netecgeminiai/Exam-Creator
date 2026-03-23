@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import HomePage from "./pages/HomePage";
 import SimulatorPage from "./pages/SimulatorPage";
 import AdminPage from "./pages/AdminPage";
+import "./App.css";
 
 export default function App() {
   return (

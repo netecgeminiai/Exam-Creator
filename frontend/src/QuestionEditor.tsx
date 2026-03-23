@@ -591,6 +591,63 @@ function MultipleChoiceEditor({ question, onSave }: Props) {
   );
 }
 
+// ─── Spanish Translation Editor ───────────────────────────────────────────────
+function SpanishEditor({ question, onSave }: Props) {
+  const t = (question as any).translation ?? {};
+  const [stem, setStem] = useState<string>(t.spanish_stem ?? "");
+  const [explanation, setExplanation] = useState<string>(t.spanish_explanation ?? "");
+  const [options, setOptions] = useState<Option[]>(
+    t.spanish_options?.length
+      ? t.spanish_options
+      : question.english_options?.map((o: Option) => ({ key: o.key, text: "" })) ?? []
+  );
+
+  const updateOption = (i: number, text: string) => {
+    const next = [...options];
+    next[i] = { ...next[i], text };
+    setOptions(next);
+  };
+
+  const buildPatch = () => ({
+    spanish_stem: stem,
+    spanish_options: options,
+    spanish_explanation: explanation,
+  });
+
+  return (
+    <div className="edit-area">
+      <RichStemEditor value={stem} onChange={setStem} />
+
+      <label style={{ color: "#94a3b8", fontSize: "0.8rem" }}>🌐 Opciones en español</label>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+        {options.map((opt, i) => (
+          <div key={i} style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+            <span className="drag-chip-label">{opt.key}</span>
+            <input
+              className="drag-chip-input"
+              value={opt.text}
+              onChange={e => updateOption(i, e.target.value)}
+              placeholder={`Opción ${opt.key} en español`}
+            />
+          </div>
+        ))}
+      </div>
+
+      <label style={{ color: "#94a3b8", fontSize: "0.8rem" }}>💡 Explicación en español</label>
+      <textarea
+        value={explanation}
+        onChange={e => setExplanation(e.target.value)}
+        rows={5}
+        style={{ background: "#1e293b", border: "1px solid #475569", color: "#e2e8f0",
+          borderRadius: 6, padding: "0.6rem", fontSize: "0.9rem", resize: "vertical", width: "100%" }}
+        placeholder="Explicación de la respuesta correcta..."
+      />
+
+      <SaveButtons onSave={onSave} buildPatch={buildPatch} questionNumber={question.question_number} />
+    </div>
+  );
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 const QUESTION_TYPES = [
   { value: "multiple_choice",  label: "Multiple Choice" },
@@ -602,6 +659,7 @@ const QUESTION_TYPES = [
 
 export default function QuestionEditor(props: Props) {
   const [activeType, setActiveType] = useState(props.question.question_type);
+  const [lang, setLang] = useState<"en" | "es">("en");
 
   // Wrap onSave to always inject the current question_type
   const wrappedOnSave = (patch: Record<string, unknown>) => {
@@ -615,42 +673,71 @@ export default function QuestionEditor(props: Props) {
 
   return (
     <div className="edit-area" style={{ gap: "0.75rem" }}>
-      {/* Type selector */}
-      <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap",
-        background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "0.6rem 0.8rem" }}>
-        <span style={{ color: "#94a3b8", fontSize: "0.85rem", fontWeight: 600 }}>🏷️ Tipo de pregunta:</span>
-        {QUESTION_TYPES.map(t => (
-          <button
-            key={t.value}
-            type="button"
-            onClick={() => setActiveType(t.value)}
-            style={{
-              padding: "0.25rem 0.7rem",
-              borderRadius: 6,
-              border: "1px solid",
-              fontSize: "0.82rem",
-              cursor: "pointer",
-              background: activeType === t.value ? "#3b82f6" : "#1e293b",
-              borderColor: activeType === t.value ? "#3b82f6" : "#475569",
-              color: activeType === t.value ? "#fff" : "#94a3b8",
-              fontWeight: activeType === t.value ? 700 : 400,
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-        {activeType !== props.question.question_type && (
-          <span style={{ color: "#fbbf24", fontSize: "0.8rem" }}>
-            ⚠️ Cambiando de <em>{props.question.question_type}</em> → <em>{activeType}</em>. Se guardará al aprobar.
-          </span>
-        )}
+
+      {/* Language tabs */}
+      <div style={{ display: "flex", gap: "0.4rem" }}>
+        <button
+          type="button"
+          onClick={() => setLang("en")}
+          style={{
+            padding: "0.3rem 1rem", borderRadius: "6px 6px 0 0", border: "1px solid",
+            fontSize: "0.85rem", cursor: "pointer",
+            background: lang === "en" ? "#1e293b" : "#0f172a",
+            borderColor: lang === "en" ? "#3b82f6" : "#334155",
+            color: lang === "en" ? "#e2e8f0" : "#64748b",
+            fontWeight: lang === "en" ? 700 : 400,
+          }}
+        >🇺🇸 Inglés</button>
+        <button
+          type="button"
+          onClick={() => setLang("es")}
+          style={{
+            padding: "0.3rem 1rem", borderRadius: "6px 6px 0 0", border: "1px solid",
+            fontSize: "0.85rem", cursor: "pointer",
+            background: lang === "es" ? "#1e293b" : "#0f172a",
+            borderColor: lang === "es" ? "#3b82f6" : "#334155",
+            color: lang === "es" ? "#e2e8f0" : "#64748b",
+            fontWeight: lang === "es" ? 700 : 400,
+          }}
+        >🇲🇽 Español</button>
       </div>
 
-      {/* Sub-editor based on active type */}
-      {activeType === "drag_and_drop" && <DragDropEditor {...subProps} />}
-      {activeType === "hotspot"       && <HotspotEditor {...subProps} />}
-      {(activeType === "multiple_choice" || activeType === "multiple_select" || activeType === "dropdown") &&
-        <MultipleChoiceEditor {...subProps} />}
+      {lang === "en" && (
+        <>
+          {/* Type selector */}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap",
+            background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "0.6rem 0.8rem" }}>
+            <span style={{ color: "#94a3b8", fontSize: "0.85rem", fontWeight: 600 }}>🏷️ Tipo de pregunta:</span>
+            {QUESTION_TYPES.map(t => (
+              <button
+                key={t.value}
+                type="button"
+                onClick={() => setActiveType(t.value)}
+                style={{
+                  padding: "0.25rem 0.7rem", borderRadius: 6, border: "1px solid",
+                  fontSize: "0.82rem", cursor: "pointer",
+                  background: activeType === t.value ? "#3b82f6" : "#1e293b",
+                  borderColor: activeType === t.value ? "#3b82f6" : "#475569",
+                  color: activeType === t.value ? "#fff" : "#94a3b8",
+                  fontWeight: activeType === t.value ? 700 : 400,
+                }}
+              >{t.label}</button>
+            ))}
+            {activeType !== props.question.question_type && (
+              <span style={{ color: "#fbbf24", fontSize: "0.8rem" }}>
+                ⚠️ Cambiando de <em>{props.question.question_type}</em> → <em>{activeType}</em>
+              </span>
+            )}
+          </div>
+
+          {activeType === "drag_and_drop" && <DragDropEditor {...subProps} />}
+          {activeType === "hotspot"       && <HotspotEditor {...subProps} />}
+          {(activeType === "multiple_choice" || activeType === "multiple_select" || activeType === "dropdown") &&
+            <MultipleChoiceEditor {...subProps} />}
+        </>
+      )}
+
+      {lang === "es" && <SpanishEditor {...subProps} />}
     </div>
   );
 }
