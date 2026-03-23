@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.env
+*.db
+.venv/
+venv/
+frontend/
+node_modules/
+.git/
+*.md
+test_*.py
