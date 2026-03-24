@@ -85,13 +85,25 @@ export default function ExamSelectorPage() {
                   {e.total} preguntas · {e.translated} traducidas
                 </span>
               </div>
-              <div style={{ display: "flex", gap: "0.5rem" }}>
-                <button
-                  onClick={() => navigate(`/simulator?exam=${e.exam_code}&mode=es`)}
-                  style={{ padding: "0.4rem 0.9rem", cursor: "pointer" }}
-                >
-                  🎓 Simular
-                </button>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {e.translated > 0 && (
+                  <button
+                    onClick={() => navigate(`/simulator?exam=${e.exam_code}&mode=es`)}
+                    style={{ padding: "0.4rem 0.9rem", cursor: "pointer" }}
+                    title={`${e.translated} preguntas traducidas`}
+                  >
+                    🇲🇽 Simular ES
+                  </button>
+                )}
+                {e.total > 0 && (
+                  <button
+                    onClick={() => navigate(`/simulator?exam=${e.exam_code}&mode=en`)}
+                    style={{ padding: "0.4rem 0.9rem", cursor: "pointer" }}
+                    title={`${e.total} preguntas en inglés`}
+                  >
+                    🇺🇸 Simular EN
+                  </button>
+                )}
                 <button
                   onClick={() => navigate(`/admin?exam=${e.exam_code}`)}
                   style={{ padding: "0.4rem 0.9rem", cursor: "pointer" }}

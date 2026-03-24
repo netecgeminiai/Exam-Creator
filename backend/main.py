@@ -347,6 +347,109 @@ def confirm_all_topics(exam_code: str, db: Session = Depends(get_db)):
     return {"confirmed": updated}
 
 
+@app.post("/exams/{exam_code}/validate-questions")
+def validate_questions(
+    exam_code: str,
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    revalidate: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    """Use LLM to validate questions against the official syllabus and exam knowledge."""
+    from .translator.question_validator import QuestionValidator
+    from datetime import datetime as dt
+
+    meta = db.query(ExamMetadata).filter(ExamMetadata.exam_code == exam_code).first()
+    if not meta:
+        raise HTTPException(status_code=400, detail="Exam metadata not found.")
+
+    # Build topic map
+    topics = db.query(SyllabusTopic).filter(SyllabusTopic.exam_code == exam_code).all()
+    if not topics:
+        raise HTTPException(status_code=400, detail="No syllabus topics. Run /syllabus/research first.")
+    topics_map = {t.id: {"topic_name": t.topic_name, "description": t.description} for t in topics}
+
+    # Get questions to validate (only mapped ones)
+    query = db.query(DBQuestion).filter(
+        DBQuestion.exam_code == exam_code,
+        DBQuestion.syllabus_topic_id != None,
+    )
+    if not revalidate:
+        query = query.filter(DBQuestion.validation_status == "pending")
+
+    total = query.count()
+    questions = query.order_by(DBQuestion.question_number).offset(offset).limit(limit).all()
+
+    validator = QuestionValidator(
+        exam_name=meta.exam_name or "",
+        vendor=meta.vendor or "",
+        domain=meta.domain or "",
+    )
+
+    questions_data = [{
+        "id": q.id,
+        "question_number": q.question_number,
+        "english_stem": q.english_stem or q.raw_text,
+        "english_options": q.english_options or [],
+        "correct_answer": q.correct_answer,
+        "correct_answers": q.correct_answers or [],
+        "syllabus_topic_id": q.syllabus_topic_id,
+    } for q in questions]
+
+    results = validator.batch_validate(questions_data, topics_map)
+
+    valid = needs_review = rejected = 0
+    for r in results:
+        q = db.query(DBQuestion).filter(DBQuestion.id == r["question_id"]).first()
+        if q:
+            q.validation_status = r["verdict"]
+            q.validation_notes = r["notes"]
+            q.validated_at = dt.utcnow()
+            # If LLM suggests a different correct answer, add to review_notes
+            if r.get("suggested_correct_answer") and r["suggested_correct_answer"] != q.correct_answer:
+                notes = q.review_notes or []
+                notes.append(f"⚠️ LLM suggests correct answer may be {r['suggested_correct_answer']} (currently {q.correct_answer})")
+                q.review_notes = notes
+                q.review_status = ReviewStatus.pending  # flag for human review
+            db.add(q)
+            if r["verdict"] == "valid": valid += 1
+            elif r["verdict"] == "rejected": rejected += 1
+            else: needs_review += 1
+
+    db.commit()
+    return {
+        "processed": len(results),
+        "total_pending": total,
+        "valid": valid,
+        "needs_review": needs_review,
+        "rejected": rejected,
+        "remaining": max(0, total - len(results)),
+    }
+
+
+@app.get("/exams/{exam_code}/validation-stats")
+def get_validation_stats(exam_code: str, db: Session = Depends(get_db)):
+    """Get validation status counts."""
+    from sqlalchemy import func
+    rows = db.query(
+        DBQuestion.validation_status,
+        func.count(DBQuestion.id).label("count")
+    ).filter(DBQuestion.exam_code == exam_code).group_by(DBQuestion.validation_status).all()
+
+    stats = {"pending": 0, "valid": 0, "needs_review": 0, "rejected": 0}
+    for row in rows:
+        stats[row.validation_status or "pending"] = row.count
+
+    total = sum(stats.values())
+    return {
+        "exam_code": exam_code,
+        "total": total,
+        **stats,
+        "validated_pct": round((stats["valid"] + stats["needs_review"] + stats["rejected"]) / max(total, 1) * 100),
+        "valid_pct": round(stats["valid"] / max(total, 1) * 100),
+    }
+
+
 @app.post("/exams/{exam_code}/syllabus/map-questions")
 def map_questions_to_topics(
     exam_code: str,

@@ -12,7 +12,7 @@ export default function SimulatorPage() {
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [dbQuestions, setDbQuestions] = useState<DBQuestion[]>([]);
-  const [simMode, setSimMode] = useState<"legacy" | "translated">("legacy");
+  const [simMode, setSimMode] = useState<"legacy" | "translated" | "english">("legacy");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -27,12 +27,20 @@ export default function SimulatorPage() {
           setDbQuestions(data.questions);
           setSimMode("translated");
         } else if (mode === "en") {
-          const raw = sessionStorage.getItem("sim_questions");
-          if (raw) {
-            setQuestions(JSON.parse(raw));
-            setSimMode("legacy");
+          // Try DB questions first (English mode — all approved)
+          const data = await getDBQuestions(examCode, false, 500, 0);
+          if (data.questions.length > 0) {
+            setDbQuestions(data.questions);
+            setSimMode("english");
           } else {
-            navigate("/");
+            // Fall back to legacy session storage
+            const raw = sessionStorage.getItem("sim_questions");
+            if (raw) {
+              setQuestions(JSON.parse(raw));
+              setSimMode("legacy");
+            } else {
+              navigate("/");
+            }
           }
         } else if (mode === "upload" && jobId) {
           // Poll until done
@@ -82,7 +90,8 @@ export default function SimulatorPage() {
   return (
     <ExamSimulator
       questions={simMode === "legacy" ? questions : []}
-      dbQuestions={simMode === "translated" ? dbQuestions : []}
+      dbQuestions={simMode !== "legacy" ? dbQuestions : []}
+      englishMode={simMode === "english"}
       onReset={() => navigate("/")}
       onEditQuestion={handleEditQuestion}
     />

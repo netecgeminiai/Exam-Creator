@@ -372,62 +372,64 @@ export default function AdminPanel({ onBack, focusQuestion, examCode: examCodePr
       {tab === "review" && (
         <div className="review-section">
           <div className="review-filters">
-            <label>Estado:</label>
-            <select value={reviewFilter} onChange={e => { setReviewFilter(e.target.value); setReviewOffset(0); }}>
-              <option value="">Pendientes + Editadas</option>
-              <option value="pending">Solo pendientes</option>
-              <option value="edited">Solo editadas</option>
-              <option value="approved">Aprobadas</option>
-              <option value="skipped">Saltadas</option>
-            </select>
+            {/* Row 1: filters */}
+            <div className="filter-row">
+              <label>Estado:
+                <select value={reviewFilter} onChange={e => { setReviewFilter(e.target.value); setReviewOffset(0); }}>
+                  <option value="">Pendientes + Editadas</option>
+                  <option value="pending">Pendientes</option>
+                  <option value="edited">Editadas</option>
+                  <option value="approved">Aprobadas</option>
+                  <option value="skipped">Saltadas</option>
+                </select>
+              </label>
 
-            <label>Tipo:</label>
-            <select value={reviewTypeFilter} onChange={e => { setReviewTypeFilter(e.target.value); setReviewOffset(0); }}>
-              <option value="">Todos</option>
-              <option value="multiple_choice">Multiple choice</option>
-              <option value="multiple_select">Multiple select</option>
-              <option value="hotspot">Hotspot</option>
-              <option value="drag_and_drop">Drag and drop</option>
-              <option value="dropdown">Dropdown</option>
-            </select>
+              <label>Tipo:
+                <select value={reviewTypeFilter} onChange={e => { setReviewTypeFilter(e.target.value); setReviewOffset(0); }}>
+                  <option value="">Todos</option>
+                  <option value="multiple_choice">Multiple choice</option>
+                  <option value="multiple_select">Multiple select</option>
+                  <option value="hotspot">Hotspot</option>
+                  <option value="drag_and_drop">Drag and drop</option>
+                  <option value="dropdown">Dropdown</option>
+                </select>
+              </label>
 
-            <label>Pregunta #:</label>
-            <input
-              type="number"
-              placeholder="ej. 96"
-              value={reviewQNumber}
-              min={1}
-              style={{ width: 80, background: "#1e293b", border: "1px solid #475569", color: "#e2e8f0", borderRadius: 6, padding: "0.4rem 0.6rem" }}
-              onChange={e => setReviewQNumber(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") { setReviewOffset(0); loadReviewQuestions(reviewFilter, 0, reviewTypeFilter, reviewQNumber); }}}
-            />
-            <button
-              className="btn-secondary"
-              style={{ padding: "0.4rem 0.8rem", fontSize: "0.85rem" }}
-              onClick={() => { setReviewOffset(0); loadReviewQuestions(reviewFilter, 0, reviewTypeFilter, reviewQNumber); }}
-            >🔍 Buscar</button>
-            <button
-              className="btn-secondary"
-              style={{ padding: "0.4rem 0.8rem", fontSize: "0.85rem" }}
-              onClick={() => { setReviewFilter(""); setReviewTypeFilter(""); setReviewQNumber(""); setReviewOffset(0); }}
-            >✕ Limpiar</button>
+              <label>Pregunta #:
+                <input
+                  type="number"
+                  placeholder="ej. 96"
+                  value={reviewQNumber}
+                  min={1}
+                  onChange={e => setReviewQNumber(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") { setReviewOffset(0); loadReviewQuestions(reviewFilter, 0, reviewTypeFilter, reviewQNumber); }}}
+                />
+              </label>
+            </div>
 
-            <span className="total-badge">{reviewTotal} preguntas</span>
-
-            <button
-              className="btn-secondary"
-              style={{ padding: "0.4rem 0.8rem", fontSize: "0.85rem", marginLeft: "auto" }}
-              title="Descargar JSON con todas las preguntas filtradas (incluye notas LLM y explicaciones)"
-              onClick={() => {
-                const params = new URLSearchParams();
-                if (reviewFilter) params.set("status", reviewFilter);
-                if (reviewTypeFilter) params.set("question_type", reviewTypeFilter);
-                const url = `http://localhost:8000/exams/${EXAM_CODE}/export?${params.toString()}`;
-                window.open(url, "_blank");
-              }}
-            >
-              ⬇️ Exportar JSON
-            </button>
+            {/* Row 2: actions + badge */}
+            <div className="filter-actions">
+              <button className="btn-secondary btn-sm" onClick={() => { setReviewOffset(0); loadReviewQuestions(reviewFilter, 0, reviewTypeFilter, reviewQNumber); }}>
+                🔍 Buscar
+              </button>
+              <button className="btn-secondary btn-sm" onClick={() => { setReviewFilter(""); setReviewTypeFilter(""); setReviewQNumber(""); setReviewOffset(0); }}>
+                ✕ Limpiar
+              </button>
+              <span className="total-badge">{reviewTotal} preguntas</span>
+              <button
+                className="btn-secondary btn-sm"
+                style={{ marginLeft: "auto" }}
+                title="Descargar JSON con todas las preguntas filtradas"
+                onClick={() => {
+                  const params = new URLSearchParams();
+                  if (reviewFilter) params.set("status", reviewFilter);
+                  if (reviewTypeFilter) params.set("question_type", reviewTypeFilter);
+                  window.open(`http://localhost:8000/exams/${EXAM_CODE}/export?${params.toString()}`, "_blank");
+                }}
+              >
+                ⬇️ Exportar
+              </button>
+            </div>
           </div>
 
           <div className="review-list">

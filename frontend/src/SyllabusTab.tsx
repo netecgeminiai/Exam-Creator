@@ -22,21 +22,37 @@ interface SyllabusData {
   unmapped_questions: number;
 }
 
+interface ValidationStats {
+  total: number;
+  pending: number;
+  valid: number;
+  needs_review: number;
+  rejected: number;
+  validated_pct: number;
+  valid_pct: number;
+}
+
 interface Props {
   examCode: string;
 }
 
 export default function SyllabusTab({ examCode }: Props) {
   const [data, setData] = useState<SyllabusData | null>(null);
+  const [valStats, setValStats] = useState<ValidationStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [researching, setResearching] = useState(false);
   const [mapping, setMapping] = useState(false);
+  const [validating, setValidating] = useState(false);
 
   async function load() {
     try {
-      const res = await fetch(`${BASE}/exams/${examCode}/syllabus`);
-      if (res.ok) setData(await res.json());
+      const [syl, val] = await Promise.all([
+        fetch(`${BASE}/exams/${examCode}/syllabus`),
+        fetch(`${BASE}/exams/${examCode}/validation-stats`),
+      ]);
+      if (syl.ok) setData(await syl.json());
+      if (val.ok) setValStats(await val.json());
     } catch (e) {
       console.error(e);
     } finally {
@@ -79,20 +95,19 @@ export default function SyllabusTab({ examCode }: Props) {
     try {
       let totalMapped = 0;
       let remaining = data?.unmapped_questions ?? 0;
-      let offset = 0;
 
       while (remaining > 0) {
+        // Always offset=0 — backend filters by unmapped so list shrinks each round
         const res = await fetch(
-          `${BASE}/exams/${examCode}/syllabus/map-questions?limit=20&offset=${offset}`,
+          `${BASE}/exams/${examCode}/syllabus/map-questions?limit=20&offset=0`,
           { method: "POST" }
         );
         const result = await res.json();
         if (!res.ok) throw new Error(result.detail || "Error");
         totalMapped += result.mapped;
         remaining = result.total_unmapped_remaining;
-        offset += 20;
         setStatus(`🔗 Mapeando... ${totalMapped} preguntas asignadas, ${remaining} restantes`);
-        if (result.processed === 0) break;
+        if (result.processed === 0 || result.mapped === 0) break;
       }
 
       setStatus(`✅ Mapeo completado: ${totalMapped} preguntas asignadas a tópicos.`);
@@ -101,6 +116,33 @@ export default function SyllabusTab({ examCode }: Props) {
       setStatus(`❌ Error: ${e.message}`);
     } finally {
       setMapping(false);
+    }
+  }
+
+  async function handleValidate() {
+    setValidating(true);
+    setStatus("🔎 Validando preguntas contra el syllabus oficial...");
+    try {
+      let totalValid = 0, totalNeeds = 0, totalRejected = 0, remaining = valStats?.pending ?? 0;
+
+      while (remaining > 0) {
+        const res = await fetch(`${BASE}/exams/${examCode}/validate-questions?limit=20&offset=0`, { method: "POST" });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.detail || "Error");
+        totalValid += result.valid;
+        totalNeeds += result.needs_review;
+        totalRejected += result.rejected;
+        remaining = result.remaining;
+        setStatus(`🔎 Validando... ✅ ${totalValid} válidas · ⚠️ ${totalNeeds} revisar · ❌ ${totalRejected} rechazadas · ${remaining} pendientes`);
+        if (result.processed === 0) break;
+      }
+
+      setStatus(`✅ Validación completa — ✅ ${totalValid} válidas · ⚠️ ${totalNeeds} revisar · ❌ ${totalRejected} rechazadas`);
+      await load();
+    } catch (e: any) {
+      setStatus(`❌ Error: ${e.message}`);
+    } finally {
+      setValidating(false);
     }
   }
 
@@ -132,8 +174,14 @@ export default function SyllabusTab({ examCode }: Props) {
           </button>
         )}
         {data && data.topics.length > 0 && allConfirmed && data.unmapped_questions > 0 && (
-          <button onClick={handleMapQuestions} disabled={mapping || researching}>
+          <button onClick={handleMapQuestions} disabled={mapping || researching || validating}>
             {mapping ? "Mapeando..." : `🔗 Mapear ${data.unmapped_questions} preguntas`}
+          </button>
+        )}
+        {data && data.unmapped_questions === 0 && data.topics.length > 0 && (valStats?.pending ?? 0) > 0 && (
+          <button onClick={handleValidate} disabled={validating || mapping || researching}
+            style={{ background: "#1a3a1a", borderColor: "#2a6a2a" }}>
+            {validating ? "Validando..." : `🔎 Validar ${valStats?.pending} preguntas`}
           </button>
         )}
         {status && (
@@ -159,6 +207,38 @@ export default function SyllabusTab({ examCode }: Props) {
             <p style={{ margin: "0.5rem 0 0", fontSize: "0.85rem", color: "#f44336" }}>
               ⚠️ {data.unmapped_questions} preguntas sin tópico asignado
             </p>
+          )}
+        </div>
+      )}
+
+      {/* Validation stats */}
+      {valStats && valStats.total > 0 && (valStats.valid + valStats.needs_review + valStats.rejected) > 0 && (
+        <div style={{ background: "#1a1a1a", border: "1px solid #333", borderRadius: 8, padding: "1rem", marginBottom: "1.5rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.6rem" }}>
+            <span style={{ fontWeight: "bold" }}>Validación de calidad</span>
+            <span style={{ color: "#aaa", fontSize: "0.9rem" }}>{valStats.validated_pct}% validado</span>
+          </div>
+          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+            {[
+              { label: "✅ Válidas", count: valStats.valid, color: "#4caf50" },
+              { label: "⚠️ Revisar", count: valStats.needs_review, color: "#ff9800" },
+              { label: "❌ Rechazadas", count: valStats.rejected, color: "#f44336" },
+              { label: "⏳ Pendientes", count: valStats.pending, color: "#666" },
+            ].map(({ label, count, color }) => (
+              <div key={label} style={{ textAlign: "center", minWidth: 80 }}>
+                <div style={{ fontSize: "1.4rem", fontWeight: "bold", color }}>{count}</div>
+                <div style={{ fontSize: "0.78rem", color: "#888" }}>{label}</div>
+              </div>
+            ))}
+          </div>
+          {valStats.valid_pct > 0 && (
+            <div style={{ marginTop: "0.75rem" }}>
+              <div style={{ background: "#333", borderRadius: 4, height: 8, display: "flex", overflow: "hidden" }}>
+                <div style={{ background: "#4caf50", width: `${valStats.valid_pct}%`, transition: "width 0.3s" }} />
+                <div style={{ background: "#ff9800", width: `${Math.round(valStats.needs_review / valStats.total * 100)}%`, transition: "width 0.3s" }} />
+                <div style={{ background: "#f44336", width: `${Math.round(valStats.rejected / valStats.total * 100)}%`, transition: "width 0.3s" }} />
+              </div>
+            </div>
           )}
         </div>
       )}

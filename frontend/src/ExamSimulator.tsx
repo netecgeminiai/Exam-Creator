@@ -105,6 +105,7 @@ function parseRawText(raw: string): { stem: string; options: {key:string; text:s
 interface Props {
   questions: Question[];
   dbQuestions?: DBQuestion[];
+  englishMode?: boolean;
   onReset: () => void;
   onEditQuestion?: (questionNumber: number) => void;
 }
@@ -138,7 +139,7 @@ function dbToQuestion(dq: DBQuestion): Question {
   };
 }
 
-export default function ExamSimulator({ questions, dbQuestions = [], onReset, onEditQuestion }: Props) {
+export default function ExamSimulator({ questions, dbQuestions = [], englishMode = false, onReset, onEditQuestion }: Props) {
   // If we have dbQuestions (translated mode), use those; otherwise fall back to legacy
   const allQuestions: Question[] = dbQuestions.length > 0
     ? dbQuestions.map(dbToQuestion)
@@ -175,7 +176,9 @@ export default function ExamSimulator({ questions, dbQuestions = [], onReset, on
   // Parse raw_text if structured data is missing
   const parsed = (!q.options || q.options.length === 0) ? parseRawText(q.raw_text ?? "") : null;
   const displayOptions = q.options && q.options.length > 0 ? q.options : (parsed?.options ?? []);
-  const displayStem = q.question_text_es ?? q.question_text ?? parsed?.stem ?? q.raw_text;
+  const displayStem = englishMode
+    ? (q.question_text ?? parsed?.stem ?? q.raw_text)
+    : (q.question_text_es ?? q.question_text ?? parsed?.stem ?? q.raw_text);
   const rawAnswer = q.correct_answer ?? parsed?.answer ?? "";
   // Split "ADE" → ["A","D","E"] or "A, D" → ["A","D"]
   const splitAnswers = (ans: string): string[] => {
@@ -341,7 +344,7 @@ export default function ExamSimulator({ questions, dbQuestions = [], onReset, on
             if (!submitted && isSel) cls += " selected";
             return (
               <li key={opt.key} className={cls} onClick={() => handleSelect(opt.key)}>
-                <strong>{opt.key}.</strong> {(opt as any).text_es ?? opt.text}
+                <strong>{opt.key}.</strong> {englishMode ? ((opt as any).text_en ?? opt.text) : ((opt as any).text_es ?? opt.text)}
               </li>
             );
           })}
@@ -352,7 +355,7 @@ export default function ExamSimulator({ questions, dbQuestions = [], onReset, on
       {q.question_type === "hotspot" && displayOptions.length > 0 && (
         <HotspotQuestion
           stem={displayStem}
-          options={displayOptions.map(o => ({ key: o.key, text: (o as any).text_es ?? o.text }))}
+          options={displayOptions.map(o => ({ key: o.key, text: englishMode ? ((o as any).text_en ?? o.text) : ((o as any).text_es ?? o.text) }))}
           correctAnswers={correctAnswers}
           submitted={submitted}
           onAnswer={(correct) => { setSubmitted(true); if (correct) setScore(s => s + 1); }}
@@ -366,7 +369,7 @@ export default function ExamSimulator({ questions, dbQuestions = [], onReset, on
       {q.question_type === "drag_and_drop" && displayOptions.length > 0 && (
         <DragDropQuestion
           stem={displayStem}
-          options={displayOptions.map(o => ({ key: o.key, text: (o as any).text_es ?? o.text }))}
+          options={displayOptions.map(o => ({ key: o.key, text: englishMode ? ((o as any).text_en ?? o.text) : ((o as any).text_es ?? o.text) }))}
           correctAnswers={correctAnswers}
           submitted={submitted}
           onAnswer={(correct) => { setSubmitted(true); if (correct) setScore(s => s + 1); }}

@@ -65,6 +65,10 @@ class Question(Base):
     correct_answers = Column(JSON)       # ["A","D","E"]
     review_notes = Column(JSON)          # ["nota1", "nota2"]
     review_status = Column(SAEnum(ReviewStatus), default=ReviewStatus.pending)
+    # Syllabus validation
+    validation_status = Column(String(20), default="pending")  # pending | valid | needs_review | rejected
+    validation_notes = Column(JSON)      # LLM reasoning for the verdict
+    validated_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
