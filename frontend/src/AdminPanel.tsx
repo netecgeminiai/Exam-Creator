@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, Fragment } from "react";
+import SyllabusTab from "./SyllabusTab";
 import {
   importExam,
   batchReview,
@@ -60,7 +61,7 @@ interface AdminPanelProps {
   examCode?: string;
 }
 
-type AdminTab = "dashboard" | "review" | "questions";
+type AdminTab = "dashboard" | "review" | "questions" | "syllabus";
 
 export default function AdminPanel({ onBack, focusQuestion, examCode: examCodeProp }: AdminPanelProps) {
   const EXAM_CODE = examCodeProp ?? _DEFAULT_EXAM_CODE;
@@ -258,6 +259,9 @@ export default function AdminPanel({ onBack, focusQuestion, examCode: examCodePr
         </button>
         <button className={tab === "review" ? "tab active" : "tab"} onClick={() => setTab("review")}>
           🔍 Revisar
+        </button>
+        <button className={tab === "syllabus" ? "tab active" : "tab"} onClick={() => setTab("syllabus")}>
+          📚 Syllabus
         </button>
       </nav>
 
@@ -511,6 +515,11 @@ export default function AdminPanel({ onBack, focusQuestion, examCode: examCodePr
             </div>
           )}
         </div>
+      )}
+
+      {/* ── SYLLABUS TAB ── */}
+      {tab === "syllabus" && (
+        <SyllabusTab examCode={EXAM_CODE} />
       )}
     </div>
   );

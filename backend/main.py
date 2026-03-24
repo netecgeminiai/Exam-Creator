@@ -44,7 +44,7 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 
 # ── DB ────────────────────────────────────────────────────────────────────────
 from .db.database import get_db, init_db
-from .db.models import Question as DBQuestion, Translation as DBTranslation, ReviewStatus, TranslationStatus, ExamMetadata
+from .db.models import Question as DBQuestion, Translation as DBTranslation, ReviewStatus, TranslationStatus, ExamMetadata, SyllabusTopic
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
@@ -233,6 +233,182 @@ def update_exam_metadata(exam_code: str, data: ExamMetadataUpdate, db: Session =
         meta.version = data.version
     db.commit()
     return {"exam_code": exam_code, "exam_name": meta.exam_name, "vendor": meta.vendor, "domain": meta.domain, "version": meta.version}
+
+
+# ── Syllabus endpoints ────────────────────────────────────────────────────────
+
+@app.post("/exams/{exam_code}/syllabus/research")
+def research_syllabus(exam_code: str, db: Session = Depends(get_db)):
+    """Ask LLM to research official syllabus topics for this exam. Replaces existing draft topics."""
+    from .translator.syllabus_researcher import SyllabusResearcher
+
+    meta = db.query(ExamMetadata).filter(ExamMetadata.exam_code == exam_code).first()
+    if not meta:
+        raise HTTPException(status_code=404, detail="Exam metadata not found. Set vendor/name first.")
+
+    researcher = SyllabusResearcher(
+        exam_name=meta.exam_name or "",
+        vendor=meta.vendor or "",
+        domain=meta.domain or "",
+    )
+
+    topics = researcher.research_syllabus()
+    if not topics:
+        raise HTTPException(status_code=500, detail="LLM returned no topics")
+
+    # Delete existing unconfirmed topics
+    db.query(SyllabusTopic).filter(
+        SyllabusTopic.exam_code == exam_code,
+        SyllabusTopic.confirmed == 0,
+    ).delete()
+
+    saved = []
+    for i, t in enumerate(topics):
+        topic = SyllabusTopic(
+            exam_code=exam_code,
+            topic_key=t.get("topic_key", f"topic-{i+1}"),
+            topic_name=t.get("topic_name", ""),
+            description=t.get("description", ""),
+            weight_pct=t.get("weight_pct", 0),
+            order=t.get("order", i + 1),
+            source="llm",
+            confirmed=0,
+        )
+        db.add(topic)
+        saved.append(t)
+
+    db.commit()
+    return {"exam_code": exam_code, "topics_generated": len(saved), "topics": saved}
+
+
+@app.get("/exams/{exam_code}/syllabus")
+def get_syllabus(exam_code: str, db: Session = Depends(get_db)):
+    """Get current syllabus topics with question coverage stats."""
+    topics = db.query(SyllabusTopic).filter(
+        SyllabusTopic.exam_code == exam_code
+    ).order_by(SyllabusTopic.order).all()
+
+    result = []
+    for t in topics:
+        mapped = db.query(DBQuestion).filter(
+            DBQuestion.exam_code == exam_code,
+            DBQuestion.syllabus_topic_id == t.id,
+        ).count()
+        result.append({
+            "id": t.id,
+            "topic_key": t.topic_key,
+            "topic_name": t.topic_name,
+            "description": t.description,
+            "weight_pct": t.weight_pct,
+            "order": t.order,
+            "confirmed": bool(t.confirmed),
+            "source": t.source,
+            "questions_mapped": mapped,
+        })
+
+    total_questions = db.query(DBQuestion).filter(DBQuestion.exam_code == exam_code).count()
+    unmapped = db.query(DBQuestion).filter(
+        DBQuestion.exam_code == exam_code,
+        DBQuestion.syllabus_topic_id == None,
+    ).count()
+
+    return {
+        "exam_code": exam_code,
+        "topics": result,
+        "total_questions": total_questions,
+        "mapped_questions": total_questions - unmapped,
+        "unmapped_questions": unmapped,
+    }
+
+
+@app.patch("/exams/{exam_code}/syllabus/{topic_id}")
+def update_syllabus_topic(exam_code: str, topic_id: int, data: dict, db: Session = Depends(get_db)):
+    """Edit or confirm a syllabus topic."""
+    topic = db.query(SyllabusTopic).filter(
+        SyllabusTopic.id == topic_id,
+        SyllabusTopic.exam_code == exam_code,
+    ).first()
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    for field in ["topic_name", "description", "weight_pct", "order"]:
+        if field in data:
+            setattr(topic, field, data[field])
+    if data.get("confirmed") is not None:
+        topic.confirmed = 1 if data["confirmed"] else 0
+    db.commit()
+    return {"id": topic.id, "topic_key": topic.topic_key, "confirmed": bool(topic.confirmed)}
+
+
+@app.post("/exams/{exam_code}/syllabus/confirm-all")
+def confirm_all_topics(exam_code: str, db: Session = Depends(get_db)):
+    """Mark all topics as confirmed."""
+    updated = db.query(SyllabusTopic).filter(SyllabusTopic.exam_code == exam_code).update({"confirmed": 1})
+    db.commit()
+    return {"confirmed": updated}
+
+
+@app.post("/exams/{exam_code}/syllabus/map-questions")
+def map_questions_to_topics(
+    exam_code: str,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """Use LLM to map questions to syllabus topics."""
+    from .translator.syllabus_researcher import SyllabusResearcher
+
+    topics = db.query(SyllabusTopic).filter(SyllabusTopic.exam_code == exam_code).all()
+    if not topics:
+        raise HTTPException(status_code=400, detail="No syllabus topics found. Run /syllabus/research first.")
+
+    topics_data = [{"topic_key": t.topic_key, "topic_name": t.topic_name, "description": t.description} for t in topics]
+    topic_map = {t.topic_key: t.id for t in topics}
+
+    meta = db.query(ExamMetadata).filter(ExamMetadata.exam_code == exam_code).first()
+    researcher = SyllabusResearcher(
+        exam_name=meta.exam_name if meta else "",
+        vendor=meta.vendor if meta else "",
+        domain=meta.domain if meta else "",
+    )
+
+    questions = db.query(DBQuestion).filter(
+        DBQuestion.exam_code == exam_code,
+        DBQuestion.syllabus_topic_id == None,
+    ).order_by(DBQuestion.question_number).offset(offset).limit(limit).all()
+
+    total = db.query(DBQuestion).filter(
+        DBQuestion.exam_code == exam_code,
+        DBQuestion.syllabus_topic_id == None,
+    ).count()
+
+    questions_data = [
+        {"id": q.id, "question_number": q.question_number,
+         "english_stem": q.english_stem or q.raw_text,
+         "english_options": q.english_options or []}
+        for q in questions
+    ]
+
+    mappings = researcher.batch_map_questions(questions_data, topics_data)
+
+    mapped = 0
+    errors = 0
+    for m in mappings:
+        if m.get("topic_key") and m["topic_key"] in topic_map:
+            q = db.query(DBQuestion).filter(DBQuestion.id == m["question_id"]).first()
+            if q:
+                q.syllabus_topic_id = topic_map[m["topic_key"]]
+                db.add(q)
+                mapped += 1
+        else:
+            errors += 1
+
+    db.commit()
+    return {
+        "processed": len(mappings),
+        "mapped": mapped,
+        "errors": errors,
+        "total_unmapped_remaining": total - mapped,
+    }
 
 
 @app.post("/exams/{exam_code}/import", response_model=ImportResult)

@@ -5,6 +5,23 @@ import enum
 from .database import Base
 
 
+class SyllabusTopic(Base):
+    __tablename__ = "syllabus_topics"
+
+    id = Column(Integer, primary_key=True)
+    exam_code = Column(String(50), nullable=False, index=True)
+    topic_key = Column(String(50))           # e.g. "scrum-roles"
+    topic_name = Column(String(200))         # e.g. "Scrum Roles"
+    description = Column(Text)              # what this topic covers
+    weight_pct = Column(Integer, default=0) # % of exam questions
+    order = Column(Integer, default=0)
+    source = Column(String(50), default="llm")   # "llm" or "manual"
+    confirmed = Column(Integer, default=0)   # 0=pending, 1=confirmed by admin
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    questions = relationship("Question", back_populates="syllabus_topic")
+
+
 class ExamMetadata(Base):
     __tablename__ = "exam_metadata"
 
@@ -37,6 +54,8 @@ class Question(Base):
 
     id = Column(Integer, primary_key=True)
     exam_code = Column(String(50), nullable=False, index=True)
+    syllabus_topic_id = Column(Integer, ForeignKey("syllabus_topics.id"), nullable=True)
+    syllabus_topic = relationship("SyllabusTopic", back_populates="questions")
     question_number = Column(Integer, nullable=False)
     question_type = Column(String(50))
     raw_text = Column(Text)

@@ -34,5 +34,5 @@ def get_db():
 
 
 def init_db():
-    from .models import Question, Translation, ExamMetadata  # noqa: F401
+    from .models import Question, Translation, ExamMetadata, SyllabusTopic  # noqa: F401
     Base.metadata.create_all(bind=engine)
