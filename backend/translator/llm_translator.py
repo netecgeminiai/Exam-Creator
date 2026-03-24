@@ -73,13 +73,18 @@ TRANSLATE_ONLY_PROMPT = """You are an expert Microsoft certification exam transl
 Given a cleaned English exam question (already proofread), translate ALL text to Spanish.
 Use correct Microsoft terminology (e.g. "suscripción", "inquilino", "nube", "centro de administración").
 
+For drag_and_drop questions, correct_answers is an array of "Target label: OptionKey" strings.
+Translate ONLY the label part (before the last ": KEY") to Spanish; keep the ": KEY" suffix exactly as-is.
+
 Return JSON:
 {
   "spanish_stem": "traducción del enunciado",
   "spanish_options": [{"key":"A","text":"traducción de la opción"}],
+  "spanish_correct_answers": ["etiqueta traducida: A", "otra etiqueta: B"],
   "spanish_explanation": "explicación en español",
   "english_explanation": "brief explanation in English of why the answer is correct"
 }
+If the question is not drag_and_drop, set "spanish_correct_answers" to [].
 Return ONLY JSON, no markdown.
 """
 

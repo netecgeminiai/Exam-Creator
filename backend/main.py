@@ -471,6 +471,7 @@ def batch_translate(
             if existing:
                 existing.spanish_stem = result.get("spanish_stem")
                 existing.spanish_options = result.get("spanish_options", [])
+                existing.spanish_correct_answers = result.get("spanish_correct_answers") or []
                 existing.spanish_explanation = result.get("spanish_explanation")
                 existing.english_explanation = result.get("english_explanation")
                 existing.model_used = translator.model
@@ -481,6 +482,7 @@ def batch_translate(
                     question_id=q.id,
                     spanish_stem=result.get("spanish_stem"),
                     spanish_options=result.get("spanish_options", []),
+                    spanish_correct_answers=result.get("spanish_correct_answers") or [],
                     spanish_explanation=result.get("spanish_explanation"),
                     english_explanation=result.get("english_explanation"),
                     model_used=translator.model,
