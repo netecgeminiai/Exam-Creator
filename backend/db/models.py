@@ -1,8 +1,22 @@
-from sqlalchemy import Column, Integer, String, Text, JSON, DateTime, ForeignKey, Enum as SAEnum
+from sqlalchemy import Column, Integer, String, Text, JSON, DateTime, ForeignKey, Enum as SAEnum, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
 from .database import Base
+
+
+class ExamMetadata(Base):
+    __tablename__ = "exam_metadata"
+
+    id = Column(Integer, primary_key=True)
+    exam_code = Column(String(50), nullable=False, unique=True, index=True)
+    exam_name = Column(String(200))           # e.g. "Scrum Master Certified (SMC)"
+    vendor = Column(String(100))              # e.g. "SCRUMstudy", "Microsoft"
+    domain = Column(String(100))              # e.g. "Agile/Scrum", "Cloud Computing"
+    version = Column(String(50))              # e.g. "V5", "2024"
+    language = Column(String(20), default="en")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class ReviewStatus(str, enum.Enum):

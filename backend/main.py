@@ -44,7 +44,7 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 
 # ── DB ────────────────────────────────────────────────────────────────────────
 from .db.database import get_db, init_db
-from .db.models import Question as DBQuestion, Translation as DBTranslation, ReviewStatus, TranslationStatus
+from .db.models import Question as DBQuestion, Translation as DBTranslation, ReviewStatus, TranslationStatus, ExamMetadata
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
@@ -97,6 +97,19 @@ logger.info(f"Upload dir: {UPLOAD_DIR}")
 PDF_BASE_DIR = Path("/home/gabrielguerrero/.openclaw/workspace")
 
 
+def _get_translator(exam_code: str, db: Session):
+    """Build an LLMTranslator with exam context from DB metadata."""
+    from .translator.llm_translator import LLMTranslator
+    meta = db.query(ExamMetadata).filter(ExamMetadata.exam_code == exam_code).first()
+    if meta:
+        return LLMTranslator(
+            exam_name=meta.exam_name or "",
+            vendor=meta.vendor or "",
+            domain=meta.domain or "",
+        )
+    return LLMTranslator()
+
+
 # ── Pydantic schemas for new endpoints ───────────────────────────────────────
 
 class QuestionPatch(BaseModel):
@@ -118,6 +131,13 @@ class ImportResult(BaseModel):
     updated: int
     exam_code: str
     message: str
+
+
+class ExamMetadataUpdate(BaseModel):
+    exam_name: Optional[str] = None
+    vendor: Optional[str] = None
+    domain: Optional[str] = None
+    version: Optional[str] = None
 
 
 class BatchProgress(BaseModel):
@@ -181,6 +201,40 @@ async def _process_pdf_async(job_id: str, pdf_path: Path) -> None:
 # NEW DB-BACKED ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+@app.get("/exams/{exam_code}/metadata")
+def get_exam_metadata(exam_code: str, db: Session = Depends(get_db)):
+    """Get metadata for an exam."""
+    meta = db.query(ExamMetadata).filter(ExamMetadata.exam_code == exam_code).first()
+    if not meta:
+        return {"exam_code": exam_code, "exam_name": None, "vendor": None, "domain": None, "version": None}
+    return {
+        "exam_code": meta.exam_code,
+        "exam_name": meta.exam_name,
+        "vendor": meta.vendor,
+        "domain": meta.domain,
+        "version": meta.version,
+    }
+
+
+@app.patch("/exams/{exam_code}/metadata")
+def update_exam_metadata(exam_code: str, data: ExamMetadataUpdate, db: Session = Depends(get_db)):
+    """Create or update metadata for an exam."""
+    meta = db.query(ExamMetadata).filter(ExamMetadata.exam_code == exam_code).first()
+    if not meta:
+        meta = ExamMetadata(exam_code=exam_code)
+        db.add(meta)
+    if data.exam_name is not None:
+        meta.exam_name = data.exam_name
+    if data.vendor is not None:
+        meta.vendor = data.vendor
+    if data.domain is not None:
+        meta.domain = data.domain
+    if data.version is not None:
+        meta.version = data.version
+    db.commit()
+    return {"exam_code": exam_code, "exam_name": meta.exam_name, "vendor": meta.vendor, "domain": meta.domain, "version": meta.version}
+
+
 @app.post("/exams/{exam_code}/import", response_model=ImportResult)
 def import_exam(exam_code: str, db: Session = Depends(get_db)):
     """Parse PDF and save questions to DB. Idempotent: updates existing records."""
@@ -240,9 +294,7 @@ def batch_review(
     db: Session = Depends(get_db),
 ):
     """Send a batch of pending questions to LLM for English review/cleanup."""
-    from .translator.llm_translator import LLMTranslator
-
-    translator = LLMTranslator()
+    translator = _get_translator(exam_code, db)
     total = db.query(DBQuestion).filter(
         DBQuestion.exam_code == exam_code,
         DBQuestion.review_status == ReviewStatus.pending,
@@ -256,26 +308,30 @@ def batch_review(
     processed = 0
     errors = 0
 
+    from .parser.explicit_parser import try_parse_explicit
+
     for q in questions:
         try:
-            result = translator.review_only(q.raw_text, q.question_number)
+            # Try fast regex parse first (no LLM cost)
+            result = try_parse_explicit(q.raw_text)
+            if result is None:
+                # Fall back to LLM review
+                result = translator.review_only(q.raw_text, q.question_number)
+
             q.english_stem = result.get("stem", q.raw_text)
             q.english_options = result.get("options", [])
             q.correct_answer = result.get("correct_answer")
             q.correct_answers = result.get("correct_answers", [])
             q.review_notes = result.get("review_notes", [])
-            # Keep as pending so admin can review; mark as "has_issues" via notes
             if result.get("has_issues"):
-                # Leave pending for human review
-                pass
+                pass  # leave pending for human review
             else:
-                # Auto-approve clean questions
                 q.review_status = ReviewStatus.approved
             db.add(q)
             processed += 1
         except Exception as e:
             logger.error(f"Review failed Q{q.question_number}: {e}")
-            q.review_notes = [f"LLM review error: {str(e)}"]
+            q.review_notes = [f"Review error: {str(e)}"]
             errors += 1
             db.add(q)
 
@@ -431,9 +487,7 @@ def batch_translate(
     db: Session = Depends(get_db),
 ):
     """Translate approved questions to Spanish."""
-    from .translator.llm_translator import LLMTranslator
-
-    translator = LLMTranslator()
+    translator = _get_translator(exam_code, db)
     total = db.query(DBQuestion).filter(
         DBQuestion.exam_code == exam_code,
         DBQuestion.review_status == ReviewStatus.approved,
@@ -507,9 +561,7 @@ def improve_explanations(
     db: Session = Depends(get_db),
 ):
     """Re-generate explanations for translated questions using LLM."""
-    from .translator.llm_translator import LLMTranslator
-
-    translator = LLMTranslator()
+    translator = _get_translator(exam_code, db)
 
     # All questions that have a translation
     translations = (
@@ -681,6 +733,104 @@ def export_questions(
         content=payload,
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/exams")
+def list_exams(db: Session = Depends(get_db)):
+    """List all exam codes available in the DB with basic stats."""
+    from sqlalchemy import func, distinct
+    rows = db.query(
+        DBQuestion.exam_code,
+        func.count(DBQuestion.id).label("total"),
+    ).group_by(DBQuestion.exam_code).order_by(DBQuestion.exam_code).all()
+
+    result = []
+    for row in rows:
+        translated = db.query(DBTranslation).join(DBQuestion).filter(
+            DBQuestion.exam_code == row.exam_code,
+            DBTranslation.translation_status == TranslationStatus.done,
+        ).count()
+        result.append({
+            "exam_code": row.exam_code,
+            "total": row.total,
+            "translated": translated,
+        })
+    return result
+
+
+@app.post("/exams/{exam_code}/upload-pdf", response_model=ImportResult)
+async def upload_and_import_pdf(
+    exam_code: str,
+    file: UploadFile = File(...),
+    exam_name: Optional[str] = None,
+    vendor: Optional[str] = None,
+    domain: Optional[str] = None,
+    version: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Upload a PDF for an exam code and immediately import questions to DB."""
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are accepted.")
+
+    # Save/update exam metadata if provided
+    if any([exam_name, vendor, domain, version]):
+        meta = db.query(ExamMetadata).filter(ExamMetadata.exam_code == exam_code).first()
+        if not meta:
+            meta = ExamMetadata(exam_code=exam_code)
+            db.add(meta)
+        if exam_name: meta.exam_name = exam_name
+        if vendor: meta.vendor = vendor
+        if domain: meta.domain = domain
+        if version: meta.version = version
+        db.commit()
+
+    dest = PDF_BASE_DIR / f"{exam_code}.pdf"
+    async with aiofiles.open(dest, "wb") as out:
+        content = await file.read()
+        await out.write(content)
+
+    # Now run the import
+    from .parser.pdf_extractor import PDFExtractor
+    from .parser.question_splitter import QuestionSplitter
+    from .parser.question_classifier import QuestionClassifier
+
+    pages = PDFExtractor().extract(dest)
+    raw_qs = QuestionSplitter().split(pages)
+    clf = QuestionClassifier()
+
+    imported = 0
+    updated = 0
+
+    for raw_q in raw_qs:
+        q_type = clf.classify(raw_q)
+        existing = db.query(DBQuestion).filter(
+            DBQuestion.exam_code == exam_code,
+            DBQuestion.question_number == raw_q.question_number,
+        ).first()
+
+        if existing:
+            existing.raw_text = raw_q.raw_text
+            existing.question_type = q_type.value
+            updated += 1
+        else:
+            db_q = DBQuestion(
+                exam_code=exam_code,
+                question_number=raw_q.question_number,
+                question_type=q_type.value,
+                raw_text=raw_q.raw_text,
+                review_status=ReviewStatus.pending,
+            )
+            db.add(db_q)
+            imported += 1
+
+    db.commit()
+    logger.info(f"Upload+Import {exam_code}: {imported} new, {updated} updated")
+    return ImportResult(
+        imported=imported,
+        updated=updated,
+        exam_code=exam_code,
+        message=f"PDF guardado e importado: {imported} nuevas preguntas, {updated} actualizadas.",
     )
 
 

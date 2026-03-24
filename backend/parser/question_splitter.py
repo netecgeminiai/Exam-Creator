@@ -10,9 +10,11 @@ from .pdf_extractor import PageData
 
 logger = logging.getLogger(__name__)
 
-# Matches headers like "QUESTION 1", "QUESTION 12", etc.
+# Matches headers like:
+#   "QUESTION 1\n"  (Microsoft format)
+#   "NO.1 "  or "NO. 1 " (Scrum/other format — number inline with text)
 QUESTION_HEADER_RE = re.compile(
-    r"(?:^|\n)\s*(QUESTION\s+(\d+))\s*\n",
+    r"(?:^|\n)\s*(?:QUESTION\s+(\d+)\s*\n|NO\.\s*(\d+)\s)",
     re.IGNORECASE,
 )
 
@@ -65,7 +67,7 @@ class QuestionSplitter:
         raw_questions: List[RawQuestion] = []
 
         for i, match in enumerate(matches):
-            q_num = int(match.group(2))
+            q_num = int(match.group(1) or match.group(2))
             start = match.start()
             end = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
 

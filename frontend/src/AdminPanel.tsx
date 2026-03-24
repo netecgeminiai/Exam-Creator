@@ -12,7 +12,8 @@ import {
 } from "./api";
 import QuestionEditor from "./QuestionEditor";
 
-const EXAM_CODE = "MS-900";
+// EXAM_CODE is now passed as a prop; this fallback is unused but kept for safety
+const _DEFAULT_EXAM_CODE = "MS-900";
 
 /** Render stem with paragraph breaks, underlines and single line breaks */
 function renderStem(text: string) {
@@ -56,11 +57,13 @@ function renderStem(text: string) {
 interface AdminPanelProps {
   onBack: () => void;
   focusQuestion?: number | null;
+  examCode?: string;
 }
 
 type AdminTab = "dashboard" | "review" | "questions";
 
-export default function AdminPanel({ onBack, focusQuestion }: AdminPanelProps) {
+export default function AdminPanel({ onBack, focusQuestion, examCode: examCodeProp }: AdminPanelProps) {
+  const EXAM_CODE = examCodeProp ?? _DEFAULT_EXAM_CODE;
   const [tab, setTab] = useState<AdminTab>(focusQuestion ? "review" : "dashboard");
   const [stats, setStats] = useState<ExamStats | null>(null);
   const [loading, setLoading] = useState(false);

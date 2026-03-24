@@ -31,44 +31,82 @@ logger = logging.getLogger(__name__)
 
 # ─── System prompt ────────────────────────────────────────────────────────────
 
-IMPROVE_EXPLANATION_PROMPT = """You are a Microsoft certification exam expert (MS-900 and related exams).
+def _exam_context(exam_name: str = "", vendor: str = "", domain: str = "") -> str:
+    """Build a context string for LLM prompts based on exam metadata."""
+    parts = []
+    if vendor:
+        parts.append(f"vendor: {vendor}")
+    if exam_name:
+        parts.append(f"exam: {exam_name}")
+    if domain:
+        parts.append(f"domain: {domain}")
+    if parts:
+        return f"({', '.join(parts)})"
+    return "(Microsoft certification)"
+
+
+def build_improve_explanation_prompt(exam_name: str = "", vendor: str = "", domain: str = "") -> str:
+    ctx = _exam_context(exam_name, vendor, domain)
+    return f"""You are a certification exam expert {ctx}.
 
 Given an exam question with its correct answer(s) and an existing explanation (which may be incomplete, too brief, or inaccurate), your job is to:
 1. Write a thorough, accurate English explanation (3-6 sentences) that:
    - Clearly states WHY the correct answer(s) are right
    - Briefly explains why the incorrect options are wrong (when relevant)
-   - Uses precise Microsoft 365 terminology
+   - Uses precise terminology for the {domain or 'subject'} domain
    - Is useful for a student studying for the exam
-2. Translate that explanation to Mexico Spanish (español de México), using correct Microsoft terminology.
+2. Translate that explanation to Mexico Spanish (español de México).
 
 Return ONLY valid JSON:
-{
+{{
   "english_explanation": "improved explanation in English",
   "spanish_explanation": "explicación mejorada en español"
-}
+}}
 No markdown, no extra fields.
 """
 
-REVIEW_ONLY_PROMPT = """You are a Microsoft certification exam proofreader.
+
+def build_review_only_prompt(exam_name: str = "", vendor: str = "", domain: str = "") -> str:
+    ctx = _exam_context(exam_name, vendor, domain)
+    return f"""You are a certification exam proofreader {ctx}.
 Review this exam question for:
 1. OCR errors (garbled text, missing spaces, wrong characters)
-2. Microsoft terminology accuracy
+2. Terminology accuracy for {domain or 'the subject domain'}
 3. Grammar issues
 
 Return JSON:
-{
+{{
   "stem": "cleaned question text",
-  "options": [{"key":"A","text":"cleaned option text"}],
+  "options": [{{"key":"A","text":"cleaned option text"}}],
   "correct_answer": "A",
   "correct_answers": ["A","D","E"],
   "explanation": "...",
   "review_notes": ["issue 1", "issue 2"],
   "has_issues": true
-}
+}}
 Return ONLY JSON, no markdown.
 """
 
-TRANSLATE_ONLY_PROMPT = """You are an expert Microsoft certification exam translator (Mexico Spanish locale).
+
+def build_translate_only_prompt(exam_name: str = "", vendor: str = "", domain: str = "") -> str:
+    ctx = _exam_context(exam_name, vendor, domain)
+    return f"""You are an expert certification exam translator (Mexico Spanish locale) {ctx}.
+
+Given a cleaned English exam question (already proofread), translate ALL text to Spanish.
+Use correct terminology for the {domain or 'subject'} domain in Mexico Spanish.
+
+For drag_and_drop questions, correct_answers is an array of "Target label: OptionKey" strings.
+Translate ONLY the label part (before the last ": KEY") to Spanish; keep the ": KEY" suffix exactly as-is.
+
+Return JSON:
+{{"""
+
+
+# Legacy single-instance prompts (kept for backward compatibility — used when no metadata available)
+IMPROVE_EXPLANATION_PROMPT = build_improve_explanation_prompt("MS-900", "Microsoft", "Microsoft 365 / Cloud")
+REVIEW_ONLY_PROMPT = build_review_only_prompt("MS-900", "Microsoft", "Microsoft 365 / Cloud")
+
+_TRANSLATE_ONLY_BASE = """You are an expert Microsoft certification exam translator (Mexico Spanish locale).
 
 Given a cleaned English exam question (already proofread), translate ALL text to Spanish.
 Use correct Microsoft terminology (e.g. "suscripción", "inquilino", "nube", "centro de administración").
@@ -87,6 +125,8 @@ Return JSON:
 If the question is not drag_and_drop, set "spanish_correct_answers" to [].
 Return ONLY JSON, no markdown.
 """
+
+TRANSLATE_ONLY_PROMPT = _TRANSLATE_ONLY_BASE
 
 REVIEW_PROMPT = """You are an expert Microsoft certification exam translator and proofreader (Mexico Spanish locale).
 
@@ -202,11 +242,18 @@ class LLMTranslator:
         model: Optional[str] = None,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
+        exam_name: str = "",
+        vendor: str = "",
+        domain: str = "",
     ):
         self.provider = (provider or os.getenv("LLM_PROVIDER", "openai")).lower()
         self.model = model or os.getenv("LLM_MODEL", "gpt-4o")
         self.api_key = api_key or os.getenv("OPENAI_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
         self.base_url = base_url or os.getenv("OPENAI_BASE_URL")
+        # Exam context for dynamic prompts
+        self.exam_name = exam_name
+        self.vendor = vendor
+        self.domain = domain
         self._client = None
 
     def _get_client(self):
@@ -280,13 +327,26 @@ class LLMTranslator:
         """Review and clean English text only (no translation). Returns structured dict."""
         if not self.api_key:
             raise ValueError("No API key configured")
+        prompt = build_review_only_prompt(self.exam_name, self.vendor, self.domain)
         user_content = f"Question number: {question_number}\n\n{raw_text}\n\nRespond with ONLY a valid JSON object."
-        return self._call_llm_with_prompt(REVIEW_ONLY_PROMPT, user_content)
+        return self._call_llm_with_prompt(prompt, user_content)
 
     def translate_only(self, question_number: int, stem: str, options: list, correct_answer: str, correct_answers: list) -> Dict[str, Any]:
         """Translate already-reviewed English question to Spanish. Returns translation dict."""
         if not self.api_key:
             raise ValueError("No API key configured")
+        prompt = build_translate_only_prompt(self.exam_name, self.vendor, self.domain)
+        # Complete the partial prompt (build_translate_only_prompt ends at the opening brace)
+        full_prompt = prompt + """
+  "spanish_stem": "traducción del enunciado",
+  "spanish_options": [{"key":"A","text":"traducción de la opción"}],
+  "spanish_correct_answers": ["etiqueta traducida: A", "otra etiqueta: B"],
+  "spanish_explanation": "explicación en español",
+  "english_explanation": "brief explanation in English of why the answer is correct"
+}
+If the question is not drag_and_drop, set "spanish_correct_answers" to [].
+Return ONLY JSON, no markdown.
+"""
         input_data = {
             "question_number": question_number,
             "stem": stem,
@@ -295,7 +355,7 @@ class LLMTranslator:
             "correct_answers": correct_answers,
         }
         user_content = f"Translate question {question_number}:\n\n{json.dumps(input_data, ensure_ascii=False)}\n\nRespond with ONLY a valid JSON object."
-        return self._call_llm_with_prompt(TRANSLATE_ONLY_PROMPT, user_content)
+        return self._call_llm_with_prompt(full_prompt, user_content)
 
     def improve_explanation(
         self,
@@ -308,6 +368,7 @@ class LLMTranslator:
         """Ask LLM to improve/rewrite the explanation for a translated question."""
         if not self.api_key:
             raise ValueError("No API key configured")
+        prompt = build_improve_explanation_prompt(self.exam_name, self.vendor, self.domain)
         input_data = {
             "question_number": question_number,
             "stem": stem,
@@ -320,7 +381,7 @@ class LLMTranslator:
             f"{json.dumps(input_data, ensure_ascii=False)}\n\n"
             "Respond with ONLY a valid JSON object."
         )
-        return self._call_llm_with_prompt(IMPROVE_EXPLANATION_PROMPT, user_content)
+        return self._call_llm_with_prompt(prompt, user_content)
 
     def review_and_translate(self, raw_text: str, question_number: int) -> Dict[str, Any]:
         """Translate + spell/terminology review. Returns raw dict for frontend review."""

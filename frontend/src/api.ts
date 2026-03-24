@@ -182,6 +182,47 @@ export async function getExamStats(examCode: string): Promise<ExamStats> {
   return res.json();
 }
 
+export interface ExamSummary {
+  exam_code: string;
+  total: number;
+  translated: number;
+}
+
+export async function listExams(): Promise<ExamSummary[]> {
+  const res = await fetch(`${BASE}/exams`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export interface ExamMetadataPayload {
+  exam_name?: string;
+  vendor?: string;
+  domain?: string;
+  version?: string;
+}
+
+export async function uploadAndImportPDF(examCode: string, file: File, meta?: ExamMetadataPayload): Promise<ImportResult> {
+  const form = new FormData();
+  form.append("file", file);
+  if (meta?.exam_name) form.append("exam_name", meta.exam_name);
+  if (meta?.vendor) form.append("vendor", meta.vendor);
+  if (meta?.domain) form.append("domain", meta.domain);
+  if (meta?.version) form.append("version", meta.version);
+  const res = await fetch(`${BASE}/exams/${examCode}/upload-pdf`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function updateExamMetadata(examCode: string, meta: ExamMetadataPayload): Promise<any> {
+  const res = await fetch(`${BASE}/exams/${examCode}/metadata`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(meta),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function getDBQuestions(
   examCode: string,
   translatedOnly = false,

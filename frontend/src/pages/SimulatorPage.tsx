@@ -21,8 +21,9 @@ export default function SimulatorPage() {
       setLoading(true);
       setError("");
       try {
+        const examCode = searchParams.get("exam") ?? "MS-900";
         if (mode === "es") {
-          const data = await getDBQuestions("MS-900", true, 500, 0);
+          const data = await getDBQuestions(examCode, true, 500, 0);
           setDbQuestions(data.questions);
           setSimMode("translated");
         } else if (mode === "en") {
