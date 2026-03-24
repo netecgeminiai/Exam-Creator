@@ -114,7 +114,8 @@ function dbToQuestion(dq: DBQuestion): Question {
   const t = dq.translation;
   const spanishOptions = t?.spanish_options?.map((o, i) => ({
     key: o.key,
-    text: dq.english_options?.[i]?.text ?? o.text,
+    text: o.text,                                   // spanish text as primary (shown in simulator)
+    text_en: dq.english_options?.[i]?.text ?? o.text, // english for reference
     text_es: o.text,
   })) ?? dq.english_options?.map(o => ({ key: o.key, text: o.text, text_es: o.text })) ?? [];
 
