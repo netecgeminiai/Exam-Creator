@@ -762,21 +762,29 @@ def patch_question(
     if patch.english_stem is not None:
         q.english_stem = patch.english_stem
         updated_fields.append("english_stem")
+        q.validation_status = "pending"
+        q.validation_notes = []
     if patch.english_options is not None:
         q.english_options = patch.english_options
         updated_fields.append("english_options")
+        q.validation_status = "pending"
+        q.validation_notes = []
     if patch.correct_answer is not None:
         q.correct_answer = patch.correct_answer
         # Keep correct_answers in sync for single-answer questions
         if not patch.correct_answers:
             q.correct_answers = [patch.correct_answer]
         updated_fields.append("correct_answer")
+        q.validation_status = "pending"  # reset — needs re-validation
+        q.validation_notes = []
     if patch.correct_answers is not None:
         q.correct_answers = patch.correct_answers
         # Keep correct_answer in sync for single-answer questions
         if len(patch.correct_answers) == 1 and not patch.correct_answer:
             q.correct_answer = patch.correct_answers[0]
         updated_fields.append("correct_answers")
+        q.validation_status = "pending"  # reset — needs re-validation
+        q.validation_notes = []
     if patch.review_notes is not None:
         q.review_notes = patch.review_notes
         updated_fields.append("review_notes")
