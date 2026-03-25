@@ -507,7 +507,7 @@ export default function AdminPanel({ onBack, focusQuestion, examCode: examCodePr
                             const result = await validateQuestion(EXAM_CODE, q.id);
                             const verdict = result.verdict === "valid" ? "✅ válida" : result.verdict === "rejected" ? "❌ rechazada" : "⚠️ necesita revisión";
                             setStatus(`Q${q.question_number} — ${verdict} (confianza: ${result.confidence})`);
-                            // Refresh the question list to show updated validation
+                            setEditingId(null); // close editor so badge is visible
                             await loadReviewQuestions(reviewFilter, reviewOffset, reviewTypeFilter, reviewQNumber);
                           } catch (e: any) {
                             setStatus(`❌ Error al validar: ${e.message}`);
