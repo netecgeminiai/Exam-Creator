@@ -124,6 +124,7 @@ class QuestionPatch(BaseModel):
     spanish_stem: Optional[str] = None
     spanish_options: Optional[List[Dict[str, Any]]] = None
     spanish_explanation: Optional[str] = None
+    english_explanation: Optional[str] = None
 
 
 class ImportResult(BaseModel):
@@ -723,6 +724,7 @@ def patch_question(
         "spanish_stem": patch.spanish_stem,
         "spanish_options": patch.spanish_options,
         "spanish_explanation": patch.spanish_explanation,
+        "english_explanation": patch.english_explanation,
     }.items() if v is not None}
 
     if translation_updates:

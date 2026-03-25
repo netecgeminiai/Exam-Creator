@@ -184,6 +184,31 @@ function RichStemEditor({ value, onChange }: { value: string; onChange: (v: stri
 
 interface Option { key: string; text: string; }
 
+function ExplanationEditor({ value, onChange, lang = "en" }: { value: string; onChange: (v: string) => void; lang?: "en" | "es" }) {
+  return (
+    <div style={{ marginTop: "0.5rem" }}>
+      <label style={{ color: "#64b5f6", fontSize: "0.8rem", display: "block", marginBottom: "0.3rem" }}>
+        💡 Explicación de la respuesta correcta {lang === "en" ? "🇺🇸 (inglés)" : "🇲🇽 (español)"}
+        <span style={{ color: "#888", marginLeft: "0.5rem", fontWeight: 400 }}>— incluye referencia al material oficial (ej. SBOK Cap. 3)</span>
+      </label>
+      <textarea
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        rows={4}
+        placeholder={lang === "en"
+          ? "Explain why the correct answer is right. Cite the official source (e.g. SBOK Guide, Chapter 3: Scrum Roles, Section 3.2)..."
+          : "Explica por qué la respuesta correcta es correcta. Cita la fuente oficial (ej. Guía SBOK, Capítulo 3: Roles de Scrum)..."}
+        style={{
+          width: "100%", boxSizing: "border-box",
+          background: "#0d1a2a", border: "1px solid #2a4a6a",
+          color: "#e2e8f0", borderRadius: 6, padding: "0.6rem 0.75rem",
+          fontSize: "0.87rem", lineHeight: 1.6, resize: "vertical",
+        }}
+      />
+    </div>
+  );
+}
+
 interface Props {
   question: DBQuestion;
   onSave: (patch: Record<string, unknown>) => void;
@@ -511,6 +536,9 @@ function MultipleChoiceEditor({ question, onSave }: Props) {
       ? question.correct_answers
       : question.correct_answer ? [question.correct_answer] : []
   );
+  const [englishExplanation, setEnglishExplanation] = useState(
+    question.translation?.english_explanation ?? ""
+  );
 
   const addOption = () => {
     const nextKey = String.fromCharCode(65 + options.length);
@@ -542,6 +570,7 @@ function MultipleChoiceEditor({ question, onSave }: Props) {
       english_stem: stem,
       english_options: options.filter(o => o.text.trim()),
       review_status: "edited",
+      english_explanation: englishExplanation || undefined,
     };
     if (isMultiSelect) {
       patch.correct_answers = selected;
@@ -585,6 +614,8 @@ function MultipleChoiceEditor({ question, onSave }: Props) {
         ))}
         <button className="btn-add-item" onClick={addOption}>+ Agregar opción</button>
       </div>
+
+      <ExplanationEditor value={englishExplanation} onChange={setEnglishExplanation} />
 
       <SaveButtons onSave={onSave} buildPatch={buildPatch} questionNumber={question.question_number} />
     </div>
@@ -633,15 +664,7 @@ function SpanishEditor({ question, onSave }: Props) {
         ))}
       </div>
 
-      <label style={{ color: "#94a3b8", fontSize: "0.8rem" }}>💡 Explicación en español</label>
-      <textarea
-        value={explanation}
-        onChange={e => setExplanation(e.target.value)}
-        rows={5}
-        style={{ background: "#1e293b", border: "1px solid #475569", color: "#e2e8f0",
-          borderRadius: 6, padding: "0.6rem", fontSize: "0.9rem", resize: "vertical", width: "100%" }}
-        placeholder="Explicación de la respuesta correcta..."
-      />
+      <ExplanationEditor value={explanation} onChange={setExplanation} lang="es" />
 
       <SaveButtons onSave={onSave} buildPatch={buildPatch} questionNumber={question.question_number} />
     </div>

@@ -12,30 +12,36 @@ from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
-VALIDATION_PROMPT = """You are a certification exam quality auditor with deep knowledge of the {exam_name} exam by {vendor}.
+VALIDATION_PROMPT = """You are a senior certification exam quality auditor with deep, expert knowledge of the {exam_name} exam by {vendor} and its official body of knowledge ({domain}).
 
-Your task is to validate whether an exam question is suitable for this certification, given:
-1. The official syllabus topic it was mapped to
-2. Your knowledge of the official exam body of knowledge ({domain})
+Your task is to validate whether an exam question is suitable for this certification.
 
-Evaluate the question on these criteria:
+Evaluate on these criteria:
 - **Relevance**: Does it genuinely test knowledge of the assigned syllabus topic?
 - **Accuracy**: Is the marked correct answer actually correct per the official {vendor} body of knowledge?
-- **Quality**: Is the question well-formed, unambiguous, and at the right difficulty level for this certification?
+- **Quality**: Is it well-formed, unambiguous, and at the right difficulty level?
 - **Authenticity**: Does it match the style and scope of real {exam_name} exam questions?
+
+IMPORTANT: For every note you write, you MUST cite the specific source in the official body of knowledge.
+For {vendor} exams, cite like: "SBOK Guide, Chapter X: [Chapter Name], Section: [Section Name]"
+or "SBOK Guide, p. XX" if you know the page.
+If the answer is wrong, explain what the correct answer is AND cite where in the official guide it is documented.
 
 Return ONLY valid JSON:
 {{
   "verdict": "valid" | "needs_review" | "rejected",
   "confidence": "high" | "medium" | "low",
-  "notes": ["specific reason 1", "specific reason 2"],
+  "notes": [
+    "Specific finding with citation — e.g. 'Answer B is incorrect. Per SBOK Guide Chapter 3 (Scrum Roles), the Scrum Master is responsible for removing impediments, not the Product Owner (Section 3.2).'"
+  ],
   "correct_answer_verified": true | false,
-  "suggested_correct_answer": "A" | null
+  "suggested_correct_answer": "A" | null,
+  "sbok_reference": "Chapter X: Title, Section Y: Title"
 }}
 
 Verdicts:
-- "valid": Question is accurate, relevant, and appropriate for the exam
-- "needs_review": Potentially valid but has issues (ambiguous, minor inaccuracy, debatable answer)
+- "valid": Accurate, relevant, well-formed, correct answer confirmed
+- "needs_review": Potentially valid but ambiguous, debatable, or minor inaccuracy
 - "rejected": Wrong answer, off-topic, outdated, or not suitable for this certification
 """
 
@@ -141,12 +147,16 @@ Validate this question."""
                     topic_name=topic.get("topic_name", "Unknown"),
                     topic_description=topic.get("description", ""),
                 )
+                notes = result.get("notes", [])
+                sbok_ref = result.get("sbok_reference")
+                if sbok_ref:
+                    notes = notes + [f"📖 Referencia: {sbok_ref}"]
                 results.append({
                     "question_id": q["id"],
                     "question_number": q.get("question_number"),
                     "verdict": result.get("verdict", "needs_review"),
                     "confidence": result.get("confidence", "low"),
-                    "notes": result.get("notes", []),
+                    "notes": notes,
                     "correct_answer_verified": result.get("correct_answer_verified", False),
                     "suggested_correct_answer": result.get("suggested_correct_answer"),
                 })
