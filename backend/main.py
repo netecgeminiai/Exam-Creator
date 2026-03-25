@@ -348,6 +348,62 @@ def confirm_all_topics(exam_code: str, db: Session = Depends(get_db)):
     return {"confirmed": updated}
 
 
+@app.post("/exams/{exam_code}/questions/{q_id}/validate")
+def validate_single_question(exam_code: str, q_id: int, db: Session = Depends(get_db)):
+    """Re-validate a single question with current data."""
+    from .translator.question_validator import QuestionValidator
+    from datetime import datetime as dt
+
+    q = db.query(DBQuestion).filter(DBQuestion.id == q_id, DBQuestion.exam_code == exam_code).first()
+    if not q:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    meta = db.query(ExamMetadata).filter(ExamMetadata.exam_code == exam_code).first()
+    topics = db.query(SyllabusTopic).filter(SyllabusTopic.exam_code == exam_code).all()
+    topics_map = {t.id: {"topic_name": t.topic_name, "description": t.description} for t in topics}
+    topic = topics_map.get(q.syllabus_topic_id) or {}
+
+    validator = QuestionValidator(
+        exam_name=meta.exam_name if meta else "",
+        vendor=meta.vendor if meta else "",
+        domain=meta.domain if meta else "",
+    )
+
+    result = validator.validate_question(
+        question_number=q.question_number,
+        stem=q.english_stem or q.raw_text or "",
+        options=q.english_options or [],
+        correct_answers=q.correct_answers or ([q.correct_answer] if q.correct_answer else []),
+        topic_name=topic.get("topic_name", "Unknown"),
+        topic_description=topic.get("description", ""),
+    )
+
+    notes = result.get("notes", [])
+    sbok_ref = result.get("sbok_reference")
+    if sbok_ref:
+        notes = notes + [f"📖 Referencia: {sbok_ref}"]
+
+    q.validation_status = result.get("verdict", "needs_review")
+    q.validation_notes = notes
+    q.validated_at = dt.utcnow()
+
+    if result.get("suggested_correct_answer") and result["suggested_correct_answer"] != q.correct_answer:
+        existing = q.review_notes or []
+        existing.append(f"⚠️ LLM sugiere que la respuesta correcta puede ser {result['suggested_correct_answer']} (actual: {q.correct_answer})")
+        q.review_notes = existing
+
+    db.add(q)
+    db.commit()
+
+    return {
+        "verdict": q.validation_status,
+        "confidence": result.get("confidence", "medium"),
+        "notes": notes,
+        "correct_answer_verified": result.get("correct_answer_verified", False),
+        "suggested_correct_answer": result.get("suggested_correct_answer"),
+    }
+
+
 @app.post("/exams/{exam_code}/validate-questions")
 def validate_questions(
     exam_code: str,

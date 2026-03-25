@@ -8,6 +8,7 @@ import {
   batchTranslate,
   improveExplanations,
   getExamStats,
+  validateQuestion,
   type ExamStats,
   type DBQuestion,
 } from "./api";
@@ -78,6 +79,7 @@ export default function AdminPanel({ onBack, focusQuestion, examCode: examCodePr
   const [reviewQNumber, setReviewQNumber] = useState<string>("");
   const [batchLimit, setBatchLimit] = useState(50);
   const [batchOffset, setBatchOffset] = useState(0);
+  const [validatingId, setValidatingId] = useState<number | null>(null);
 
   const refreshStats = useCallback(async () => {
     try {
@@ -481,14 +483,45 @@ export default function AdminPanel({ onBack, focusQuestion, examCode: examCodePr
 
                 {/* Question stem + options — only shown when NOT editing */}
                 {editingId === q.id ? (
-                  <QuestionEditor
-                    question={q}
-                    onSave={(patch) => {
-                      if (patch._cancel) { setEditingId(null); return; }
-                      handleEdit(q, patch);
-                    }}
-                    onCancel={() => setEditingId(null)}
-                  />
+                  <>
+                    <QuestionEditor
+                      question={q}
+                      onSave={(patch) => {
+                        if (patch._cancel) { setEditingId(null); return; }
+                        handleEdit(q, patch);
+                      }}
+                      onCancel={() => setEditingId(null)}
+                    />
+                    <div style={{ marginTop: "0.75rem", paddingTop: "0.75rem", borderTop: "1px solid #2a3a4a" }}>
+                      <button
+                        disabled={validatingId === q.id}
+                        onClick={async () => {
+                          setValidatingId(q.id);
+                          setStatus("🔎 Re-validando pregunta...");
+                          try {
+                            const result = await validateQuestion(EXAM_CODE, q.id);
+                            const verdict = result.verdict === "valid" ? "✅ válida" : result.verdict === "rejected" ? "❌ rechazada" : "⚠️ necesita revisión";
+                            setStatus(`Q${q.question_number} — ${verdict} (confianza: ${result.confidence})`);
+                            // Refresh the question list to show updated validation
+                            await loadReviewQuestions(reviewFilter, reviewOffset, reviewTypeFilter, reviewQNumber);
+                          } catch (e: any) {
+                            setStatus(`❌ Error al validar: ${e.message}`);
+                          } finally {
+                            setValidatingId(null);
+                          }
+                        }}
+                        style={{
+                          padding: "0.4rem 1rem", fontSize: "0.85rem", cursor: "pointer",
+                          background: "#1a2a3a", border: "1px solid #2a6a9a", borderRadius: 6, color: "#64b5f6"
+                        }}
+                      >
+                        {validatingId === q.id ? "⏳ Validando..." : "🔎 Re-validar con cambios"}
+                      </button>
+                      <span style={{ marginLeft: "0.6rem", fontSize: "0.8rem", color: "#888" }}>
+                        Envía la pregunta actualizada al LLM para re-evaluar su calidad y corrección
+                      </span>
+                    </div>
+                  </>
                 ) : (
                   <>
                     <div className="q-stem">

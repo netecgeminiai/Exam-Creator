@@ -216,6 +216,18 @@ export async function uploadAndImportPDF(examCode: string, file: File, meta?: Ex
   return res.json();
 }
 
+export async function validateQuestion(examCode: string, qId: number): Promise<{
+  verdict: string;
+  confidence: string;
+  notes: string[];
+  correct_answer_verified: boolean;
+  suggested_correct_answer?: string;
+}> {
+  const res = await fetch(`${BASE}/exams/${examCode}/questions/${qId}/validate`, { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function updateExamMetadata(examCode: string, meta: ExamMetadataPayload): Promise<any> {
   const res = await fetch(`${BASE}/exams/${examCode}/metadata`, {
     method: "PATCH",
