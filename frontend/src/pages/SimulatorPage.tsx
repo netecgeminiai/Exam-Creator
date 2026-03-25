@@ -64,8 +64,10 @@ export default function SimulatorPage() {
     })();
   }, [mode, jobId]);
 
+  const examCode = searchParams.get("exam") ?? "MS-900";
+
   const handleEditQuestion = (questionNumber: number) => {
-    navigate(`/admin/question/${questionNumber}`);
+    navigate(`/admin/question/${questionNumber}?exam=${examCode}`);
   };
 
   if (loading) {

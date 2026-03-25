@@ -2,6 +2,14 @@ import { useState, useEffect } from "react";
 
 const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
+interface ExamMeta {
+  exam_code: string;
+  exam_name: string | null;
+  vendor: string | null;
+  domain: string | null;
+  version: string | null;
+}
+
 interface Topic {
   id: number;
   topic_key: string;
@@ -39,6 +47,9 @@ interface Props {
 export default function SyllabusTab({ examCode }: Props) {
   const [data, setData] = useState<SyllabusData | null>(null);
   const [valStats, setValStats] = useState<ValidationStats | null>(null);
+  const [meta, setMeta] = useState<ExamMeta | null>(null);
+  const [editingMeta, setEditingMeta] = useState(false);
+  const [metaForm, setMetaForm] = useState({ exam_name: "", vendor: "", domain: "", version: "" });
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [researching, setResearching] = useState(false);
@@ -47,12 +58,23 @@ export default function SyllabusTab({ examCode }: Props) {
 
   async function load() {
     try {
-      const [syl, val] = await Promise.all([
+      const [syl, val, m] = await Promise.all([
         fetch(`${BASE}/exams/${examCode}/syllabus`),
         fetch(`${BASE}/exams/${examCode}/validation-stats`),
+        fetch(`${BASE}/exams/${examCode}/metadata`),
       ]);
       if (syl.ok) setData(await syl.json());
       if (val.ok) setValStats(await val.json());
+      if (m.ok) {
+        const md = await m.json();
+        setMeta(md);
+        setMetaForm({
+          exam_name: md.exam_name || "",
+          vendor: md.vendor || "",
+          domain: md.domain || "",
+          version: md.version || "",
+        });
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -61,6 +83,22 @@ export default function SyllabusTab({ examCode }: Props) {
   }
 
   useEffect(() => { load(); }, [examCode]);
+
+  async function handleSaveMeta() {
+    try {
+      const res = await fetch(`${BASE}/exams/${examCode}/metadata`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(metaForm),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setEditingMeta(false);
+      setStatus("✅ Metadata guardada.");
+      await load();
+    } catch (e: any) {
+      setStatus(`❌ ${e.message}`);
+    }
+  }
 
   async function handleResearch() {
     setResearching(true);
@@ -163,6 +201,47 @@ export default function SyllabusTab({ examCode }: Props) {
 
   return (
     <div style={{ padding: "1rem 0" }}>
+      {/* Metadata panel */}
+      <div style={{ background: "#1a1a1a", border: "1px solid #333", borderRadius: 8, padding: "0.9rem 1.1rem", marginBottom: "1.25rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: editingMeta ? "0.75rem" : 0 }}>
+          <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontWeight: "bold", fontSize: "0.95rem" }}>{meta?.exam_name || <em style={{ color: "#666" }}>Sin nombre</em>}</span>
+            {meta?.vendor && <span style={{ fontSize: "0.85rem", color: "#888" }}>🏢 {meta.vendor}</span>}
+            {meta?.domain && <span style={{ fontSize: "0.85rem", color: "#888" }}>📂 {meta.domain}</span>}
+            {meta?.version && <span style={{ fontSize: "0.85rem", color: "#888" }}>v{meta.version}</span>}
+            {!meta?.vendor && !meta?.exam_name && (
+              <span style={{ fontSize: "0.85rem", color: "#f44336" }}>⚠️ Metadata requerida para investigar syllabus</span>
+            )}
+          </div>
+          <button onClick={() => setEditingMeta(e => !e)} style={{ fontSize: "0.8rem", padding: "0.25rem 0.7rem" }}>
+            {editingMeta ? "✕ Cancelar" : "✏️ Editar"}
+          </button>
+        </div>
+        {editingMeta && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem" }}>
+            {([
+              ["exam_name", "Nombre del examen", "ej. Scrum Master Certified (SMC)"],
+              ["vendor", "Vendor / Organización", "ej. SCRUMstudy, Microsoft"],
+              ["domain", "Dominio", "ej. Agile/Scrum, Cloud Computing"],
+              ["version", "Versión", "ej. V5, 2024"],
+            ] as [keyof typeof metaForm, string, string][]).map(([key, label, placeholder]) => (
+              <div key={key}>
+                <label style={{ display: "block", fontSize: "0.8rem", color: "#aaa", marginBottom: "0.25rem" }}>{label}</label>
+                <input
+                  value={metaForm[key]}
+                  onChange={e => setMetaForm(f => ({ ...f, [key]: e.target.value }))}
+                  placeholder={placeholder}
+                  style={{ width: "100%", boxSizing: "border-box", padding: "0.4rem 0.6rem", background: "#111", border: "1px solid #444", color: "#fff", borderRadius: 6, fontSize: "0.87rem" }}
+                />
+              </div>
+            ))}
+            <div style={{ gridColumn: "span 2" }}>
+              <button onClick={handleSaveMeta} style={{ padding: "0.4rem 1rem" }}>💾 Guardar metadata</button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Header actions */}
       <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginBottom: "1.25rem", alignItems: "center" }}>
         <button onClick={handleResearch} disabled={researching || mapping}>
