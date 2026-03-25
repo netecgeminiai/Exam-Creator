@@ -25,6 +25,12 @@ OPTION_START_RE = re.compile(r"^([A-F])[.)]\s+(.+)", re.MULTILINE)
 # Cloudflare / junk token pattern
 JUNK_RE = re.compile(r"__cf_chl_\w+__=\S+.*", re.DOTALL)
 
+# PDF watermark / provider branding
+WATERMARK_RE = re.compile(r"IT Certification Guaranteed,?\s*The Easy Way!?\s*\n?\s*\d*\s*", re.IGNORECASE)
+
+# Carriage returns
+CR_RE = re.compile(r"\r\n?")
+
 # Lines that are clearly NOT a continuation (start of new option, answer, reference, etc.)
 NON_CONTINUATION_RE = re.compile(
     r"^(?:[A-F][.)]\s|Answer\s*:|Reference\s*:|Explanation\s*:|NO\.\s*\d+|\s*$)",
@@ -79,8 +85,11 @@ def try_parse_explicit(raw_text: str) -> Optional[dict]:
     if not answer_match:
         return None
 
-    # Strip junk after the answer line
-    clean_text = JUNK_RE.sub("", raw_text).strip()
+    # Strip junk / watermarks / carriage returns
+    clean_text = JUNK_RE.sub("", raw_text)
+    clean_text = WATERMARK_RE.sub("", clean_text)
+    clean_text = CR_RE.sub("\n", clean_text)
+    clean_text = re.sub(r"\n{3,}", "\n\n", clean_text).strip()
 
     # Join continuation lines before parsing options
     clean_text = _join_continuation_lines(clean_text)

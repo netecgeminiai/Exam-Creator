@@ -367,11 +367,13 @@ function DragDropEditor({ question, onSave }: Props) {
         {options.map((opt, i) => (
           <div key={i} style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
             <span className="drag-chip-label">{opt.key}</span>
-            <input
+            <textarea
               className="drag-chip-input"
               value={opt.text}
               onChange={e => updateOption(i, e.target.value)}
               placeholder={`Opción ${opt.key}`}
+              rows={2}
+              style={{ resize: "vertical", lineHeight: 1.5 }}
             />
             <button className="btn-icon-remove" onClick={() => removeOption(i)} title="Eliminar">✕</button>
           </div>
@@ -499,7 +501,7 @@ function HotspotEditor({ question, onSave }: Props) {
               value={s.text}
               onChange={e => updateStatement(i, e.target.value)}
               placeholder="Afirmación..."
-              style={{ flex: 3 }}
+              style={{ flex: 3, resize: "vertical", lineHeight: 1.5 }}
             />
             <div className="yn-toggle">
               <button
@@ -603,11 +605,13 @@ function MultipleChoiceEditor({ question, onSave }: Props) {
             >
               {opt.key}
             </button>
-            <input
+            <textarea
               className="drag-chip-input"
               value={opt.text}
               onChange={e => updateOption(i, e.target.value)}
               placeholder={`Opción ${opt.key}`}
+              rows={2}
+              style={{ resize: "vertical", lineHeight: 1.5 }}
             />
             <button className="btn-icon-remove" onClick={() => removeOption(i)}>✕</button>
           </div>
