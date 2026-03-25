@@ -767,9 +767,15 @@ def patch_question(
         updated_fields.append("english_options")
     if patch.correct_answer is not None:
         q.correct_answer = patch.correct_answer
+        # Keep correct_answers in sync for single-answer questions
+        if not patch.correct_answers:
+            q.correct_answers = [patch.correct_answer]
         updated_fields.append("correct_answer")
     if patch.correct_answers is not None:
         q.correct_answers = patch.correct_answers
+        # Keep correct_answer in sync for single-answer questions
+        if len(patch.correct_answers) == 1 and not patch.correct_answer:
+            q.correct_answer = patch.correct_answers[0]
         updated_fields.append("correct_answers")
     if patch.review_notes is not None:
         q.review_notes = patch.review_notes

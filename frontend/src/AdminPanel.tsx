@@ -252,7 +252,12 @@ export default function AdminPanel({ onBack, focusQuestion, examCode: examCodePr
     <div className="admin-panel">
       <header className="admin-header">
         <button className="btn-secondary" onClick={onBack}>← Volver</button>
-        <h2>🛠️ Panel de Administración — {EXAM_CODE}</h2>
+        <h2>🛠️ {EXAM_CODE}</h2>
+        <button
+          className="btn-secondary"
+          style={{ marginLeft: "auto", fontSize: "0.82rem", padding: "0.3rem 0.8rem" }}
+          onClick={() => window.location.href = "/"}
+        >🏠 Selector</button>
       </header>
 
       <nav className="admin-tabs">
