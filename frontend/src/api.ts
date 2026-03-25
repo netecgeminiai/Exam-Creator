@@ -36,6 +36,7 @@ export interface Question {
   dropdowns?: Array<{ id: string; options: string[]; options_es?: string[]; correct_option?: string }>;
   translation_status?: string;
   explanation?: string;
+  explanation_en?: string;
 }
 
 export async function uploadPDF(file: File): Promise<Job> {

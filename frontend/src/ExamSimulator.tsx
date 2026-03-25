@@ -135,7 +135,8 @@ function dbToQuestion(dq: DBQuestion): Question {
     options: spanishOptions,
     correct_answer: dq.correct_answer,
     correct_answers: effectiveCorrectAnswers,
-    explanation: t?.spanish_explanation ?? t?.english_explanation,
+    explanation: t?.spanish_explanation ?? t?.english_explanation ?? undefined,
+    explanation_en: t?.english_explanation ?? undefined,
   };
 }
 
@@ -191,7 +192,9 @@ export default function ExamSimulator({ questions, dbQuestions = [], englishMode
   };
   const correctAnswers = q.correct_answers?.length ? q.correct_answers : splitAnswers(rawAnswer);
   const correctAnswer = correctAnswers.length === 1 ? correctAnswers[0] : rawAnswer;
-  const displayExplanation = (q as any).explanation ?? parsed?.explanation ?? "";
+  const displayExplanation = englishMode
+    ? ((q as any).explanation_en ?? (q as any).explanation ?? parsed?.explanation ?? "")
+    : ((q as any).explanation ?? (q as any).explanation_en ?? parsed?.explanation ?? "");
 
   const isCorrect = (): boolean => {
     if (correctAnswers.length === 0) return false;
