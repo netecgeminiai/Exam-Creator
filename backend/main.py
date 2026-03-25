@@ -666,6 +666,13 @@ def get_review_questions(
                 "correct_answers": q.correct_answers,
                 "review_notes": q.review_notes or [],
                 "raw_text": q.raw_text,
+                "validation_status": q.validation_status,
+                "validation_notes": q.validation_notes or [],
+                "translation": {
+                    "english_explanation": q.translation.english_explanation if q.translation else None,
+                    "spanish_explanation": q.translation.spanish_explanation if q.translation else None,
+                    "spanish_stem": q.translation.spanish_stem if q.translation else None,
+                } if q.translation else None,
             }
             for q in questions
         ],

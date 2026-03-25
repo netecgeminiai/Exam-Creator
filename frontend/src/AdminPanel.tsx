@@ -449,6 +449,17 @@ export default function AdminPanel({ onBack, focusQuestion, examCode: examCodePr
                   <span className="q-status" style={{ color: statusColor(q.review_status) }}>
                     ● {q.review_status}
                   </span>
+                  {q.validation_status && q.validation_status !== "pending" && (
+                    <span style={{
+                      fontSize: "0.75rem",
+                      padding: "2px 8px",
+                      borderRadius: 10,
+                      background: q.validation_status === "valid" ? "#0d2a0d" : q.validation_status === "rejected" ? "#2a0d0d" : "#2a1f0d",
+                      color: q.validation_status === "valid" ? "#4caf50" : q.validation_status === "rejected" ? "#f44336" : "#ff9800",
+                    }}>
+                      {q.validation_status === "valid" ? "✅ válida" : q.validation_status === "rejected" ? "❌ rechazada" : "⚠️ revisar"}
+                    </span>
+                  )}
                   <div className="review-actions">
                     <button className="btn-approve" onClick={() => handleApprove(q)}>✅ Aprobar</button>
                     <button className="btn-edit" onClick={() => setEditingId(q.id)}>✏️ Editar</button>
@@ -496,6 +507,35 @@ export default function AdminPanel({ onBack, focusQuestion, examCode: examCodePr
                             <strong>{opt.key}.</strong> {opt.text}
                           </div>
                         ))}
+                      </div>
+                    )}
+
+                    {/* Validation notes */}
+                    {q.validation_notes && q.validation_notes.length > 0 && (
+                      <div className="review-notes" style={{ borderLeft: "3px solid #ff9800", marginTop: "0.75rem" }}>
+                        <strong>🔎 Validación:</strong>
+                        <ul>
+                          {q.validation_notes.map((note, i) => (
+                            <li key={i} style={{ lineHeight: 1.5 }}>{note}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Explanation */}
+                    {(q.translation?.english_explanation || q.translation?.spanish_explanation) && (
+                      <div style={{ marginTop: "0.75rem", padding: "0.75rem", background: "#0d1a2a", borderRadius: 6, borderLeft: "3px solid #2196f3" }}>
+                        <strong style={{ fontSize: "0.85rem", color: "#64b5f6" }}>💡 Explicación</strong>
+                        {q.translation.english_explanation && (
+                          <p style={{ margin: "0.4rem 0 0", fontSize: "0.87rem", color: "#aaa", lineHeight: 1.6 }}>
+                            🇺🇸 {q.translation.english_explanation}
+                          </p>
+                        )}
+                        {q.translation.spanish_explanation && (
+                          <p style={{ margin: "0.4rem 0 0", fontSize: "0.87rem", color: "#ccc", lineHeight: 1.6 }}>
+                            🇲🇽 {q.translation.spanish_explanation}
+                          </p>
+                        )}
                       </div>
                     )}
                   </>

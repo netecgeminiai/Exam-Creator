@@ -110,13 +110,15 @@ export interface DBQuestion {
   correct_answers?: string[];
   review_notes: string[];
   raw_text: string;
+  validation_status?: string;
+  validation_notes?: string[];
   translation?: {
     spanish_stem?: string;
     spanish_options?: Array<{ key: string; text: string }>;
     spanish_correct_answers?: string[];
     spanish_explanation?: string;
     english_explanation?: string;
-    translation_status: string;
+    translation_status?: string;
     model_used?: string;
   };
 }
