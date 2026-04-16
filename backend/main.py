@@ -274,6 +274,8 @@ def research_syllabus(exam_code: str, db: Session = Depends(get_db)):
             order=t.get("order", i + 1),
             source="llm",
             confirmed=0,
+            bloom_level=t.get("bloom_level", "understand"),
+            bloom_distribution=t.get("bloom_distribution", {}),
         )
         db.add(topic)
         saved.append(t)
@@ -304,6 +306,8 @@ def get_syllabus(exam_code: str, db: Session = Depends(get_db)):
             "order": t.order,
             "confirmed": bool(t.confirmed),
             "source": t.source,
+            "bloom_level": t.bloom_level,
+            "bloom_distribution": t.bloom_distribution or {},
             "questions_mapped": mapped,
         })
 

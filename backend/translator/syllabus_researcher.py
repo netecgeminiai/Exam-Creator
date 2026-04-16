@@ -14,20 +14,32 @@ logger = logging.getLogger(__name__)
 
 RESEARCH_PROMPT = """You are a certification exam expert. Given information about a certification exam, research and return the official exam syllabus/outline.
 
-Return a JSON array of topics:
+Return a JSON array of topics with Bloom's Taxonomy levels:
 [
   {
     "topic_key": "short-slug",
     "topic_name": "Full Topic Name",
     "description": "What this topic covers (2-3 sentences)",
     "weight_pct": 15,
+    "bloom_level": "understand",
+    "bloom_distribution": {"remember": 10, "understand": 40, "apply": 30, "analyze": 15, "evaluate": 5, "create": 0},
     "order": 1
   }
 ]
 
+Bloom's Taxonomy levels (revised):
+1. Remember (recall facts, terms, definitions)
+2. Understand (explain ideas, concepts, relationships)
+3. Apply (use information in new situations)
+4. Analyze (draw connections, distinctions, relationships)
+5. Evaluate (justify decisions, choices based on criteria)
+6. Create (produce new or original work)
+
 Rules:
 - Use your knowledge of the official exam body of knowledge / syllabus
 - weight_pct should reflect approximate % of exam questions per topic (must sum to ~100)
+- bloom_level: primary cognitive level for this topic (often "understand" or "apply")
+- bloom_distribution: estimated % of questions at each level (sum to 100)
 - Order topics as they appear in the official guide
 - Be specific to this exam's official content, not generic
 - Return ONLY valid JSON array, no markdown

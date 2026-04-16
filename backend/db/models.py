@@ -5,6 +5,15 @@ import enum
 from .database import Base
 
 
+class BloomLevel(str, enum.Enum):
+    remember = "remember"           # 1. Remember (recall facts/terms)
+    understand = "understand"       # 2. Understand (explain ideas/concepts)
+    apply = "apply"                 # 3. Apply (use information in new situations)
+    analyze = "analyze"             # 4. Analyze (draw connections/distinctions)
+    evaluate = "evaluate"           # 5. Evaluate (justify decisions/choices)
+    create = "create"               # 6. Create (produce new/original work)
+
+
 class SyllabusTopic(Base):
     __tablename__ = "syllabus_topics"
 
@@ -17,6 +26,8 @@ class SyllabusTopic(Base):
     order = Column(Integer, default=0)
     source = Column(String(50), default="llm")   # "llm" or "manual"
     confirmed = Column(Integer, default=0)   # 0=pending, 1=confirmed by admin
+    bloom_level = Column(SAEnum(BloomLevel), default=BloomLevel.understand)  # Bloom taxonomy level
+    bloom_distribution = Column(JSON, default={})  # e.g. {"remember": 20, "understand": 50, "apply": 30}
     created_at = Column(DateTime, default=datetime.utcnow)
 
     questions = relationship("Question", back_populates="syllabus_topic")

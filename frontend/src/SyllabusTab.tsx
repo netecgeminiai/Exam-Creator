@@ -19,6 +19,8 @@ interface Topic {
   order: number;
   confirmed: boolean;
   source: string;
+  bloom_level: string;
+  bloom_distribution: Record<string, number>;
   questions_mapped: number;
 }
 
@@ -55,6 +57,8 @@ export default function SyllabusTab({ examCode }: Props) {
   const [researching, setResearching] = useState(false);
   const [mapping, setMapping] = useState(false);
   const [validating, setValidating] = useState(false);
+  const [topicCounts, setTopicCounts] = useState<Record<number, number>>({});
+  const [generatingTopic, setGeneratingTopic] = useState<number | null>(null);
 
   async function load() {
     try {
@@ -181,6 +185,35 @@ export default function SyllabusTab({ examCode }: Props) {
       setStatus(`❌ Error: ${e.message}`);
     } finally {
       setValidating(false);
+    }
+  }
+
+  function handleTopicCountChange(topicId: number, value: string) {
+    const numeric = Number(value);
+    if (Number.isNaN(numeric)) return;
+    const clamped = Math.max(1, Math.min(20, numeric));
+    setTopicCounts(prev => ({ ...prev, [topicId]: clamped }));
+  }
+
+  async function handleGenerateQuestions(topicId: number, topicName: string) {
+    const count = Math.max(1, Math.min(20, topicCounts[topicId] ?? 5));
+    setGeneratingTopic(topicId);
+    setStatus(`✨ Generando ${count} preguntas para "${topicName}"... (puede tardar ~${count * 15}s)`);
+    try {
+      const res = await fetch(`${BASE}/exams/${examCode}/syllabus/${topicId}/generate-questions?count=${count}`, {
+        method: "POST",
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.detail || "Error");
+      const summary =
+        `✅ "${topicName}" — ${result.generated} generadas · ✅ ${result.valid} válidas · ⚠️ ${result.needs_review} requieren revisión` +
+        (result.errors > 0 ? ` · ❌ ${result.errors} errores` : "");
+      setStatus(summary);
+      await load();
+    } catch (e: any) {
+      setStatus(`❌ Error: ${e.message}`);
+    } finally {
+      setGeneratingTopic(null);
     }
   }
 
@@ -344,10 +377,13 @@ export default function SyllabusTab({ examCode }: Props) {
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.3rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.3rem", flexWrap: "wrap" }}>
                     <span style={{ fontWeight: "bold", fontSize: "1rem" }}>{t.topic_name}</span>
                     <span style={{ fontSize: "0.75rem", color: "#888", background: "#222", padding: "2px 8px", borderRadius: 10 }}>
                       {t.weight_pct}%
+                    </span>
+                    <span style={{ fontSize: "0.75rem", color: "#64b5f6", background: "#0d1a2a", padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>
+                      📊 {t.bloom_level.charAt(0).toUpperCase() + t.bloom_level.slice(1)}
                     </span>
                     {t.confirmed
                       ? <span style={{ fontSize: "0.75rem", color: "#4caf50" }}>✅ confirmado</span>
@@ -358,11 +394,48 @@ export default function SyllabusTab({ examCode }: Props) {
                     </span>
                   </div>
                   <p style={{ margin: 0, fontSize: "0.87rem", color: "#aaa", lineHeight: 1.5 }}>{t.description}</p>
+                  {Object.keys(t.bloom_distribution || {}).length > 0 && (
+                    <div style={{ marginTop: "0.4rem", fontSize: "0.75rem", color: "#888", display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+                      {Object.entries(t.bloom_distribution).map(([level, pct]) => (
+                        <span key={level} style={{ background: "#1a1a1a", padding: "2px 6px", borderRadius: 4 }}>
+                          {level}: {pct}%
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.4rem", marginLeft: "1rem" }}>
-                  <span style={{ fontSize: "0.85rem", color: t.questions_mapped > 0 ? "#4caf50" : "#666" }}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.5rem", marginLeft: "1rem", minWidth: 170 }}>
+                  <span style={{ fontSize: "0.85rem", color: t.questions_mapped > 0 ? "#4caf50" : "#f44336", fontWeight: 600 }}>
                     {t.questions_mapped} preguntas
                   </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                    <input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={topicCounts[t.id] ?? 5}
+                      onChange={e => handleTopicCountChange(t.id, e.target.value)}
+                      style={{ width: 44, padding: "0.2rem 0.3rem", textAlign: "center", background: "#111", border: "1px solid #444", color: "#fff", borderRadius: 4, fontSize: "0.82rem" }}
+                      disabled={generatingTopic === t.id}
+                    />
+                    <button
+                      onClick={() => handleGenerateQuestions(t.id, t.topic_name)}
+                      disabled={generatingTopic !== null}
+                      title={`Generar ${topicCounts[t.id] ?? 5} nuevas preguntas para este tópico con validación automática`}
+                      style={{
+                        fontSize: "0.8rem",
+                        padding: "0.25rem 0.6rem",
+                        background: generatingTopic === t.id ? "#1a2a1a" : "#0d2a0d",
+                        border: "1px solid #2a6a2a",
+                        borderRadius: 6,
+                        color: generatingTopic === t.id ? "#888" : "#4caf50",
+                        cursor: generatingTopic === null ? "pointer" : "not-allowed",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {generatingTopic === t.id ? "⏳ Generando..." : "✨ Generar"}
+                    </button>
+                  </div>
                   {!t.confirmed && (
                     <button
                       onClick={() => handleConfirmTopic(t.id, true)}
