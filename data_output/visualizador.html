@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Visualizador de Exámenes - Exam Creator</title>
+    <!-- Usamos la version mas estable de PapaParse -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
         :root { --bg: #0d1117; --card: #161b22; --text: #c9d1d9; --accent: #58a6ff; --correct: #3fb950; --border: #30363d; --error: #f85149; }
@@ -18,49 +19,77 @@
         .tag { background: #1f6feb; color: white; padding: 3px 8px; border-radius: 12px; font-size: 0.8em; }
         .error-msg { background: rgba(248, 81, 73, 0.1); border-left: 4px solid var(--error); padding: 15px; margin: 20px 0; border-radius: 4px;}
         code { background: #21262d; padding: 2px 5px; border-radius: 4px; font-family: monospace; }
+        .debug-panel { background: #111; color: yellow; padding: 10px; margin-bottom: 20px; font-family: monospace; border: 1px dashed yellow; }
     </style>
 </head>
 <body>
     <h1>📝 Visualizador de Exámenes (Exam Creator)</h1>
     <p>Archivo cargado: <b>Examen_PreConocimiento_FullStack.csv</b></p>
+    
+    <div id="debug-info" class="debug-panel" style="display: none;"></div>
     <div id="exam-container">Cargando preguntas...</div>
 
     <script>
-        // Verificación de protocolo (Evitar bloqueo CORS)
+        const debugPanel = document.getElementById('debug-info');
+        
+        function logDebug(msg) {
+            console.log(msg);
+            debugPanel.style.display = "block";
+            debugPanel.innerHTML += msg + "<br>";
+        }
+
+        // Verificación de protocolo
         if (window.location.protocol === 'file:') {
             document.getElementById('exam-container').innerHTML = `
                 <div class="error-msg">
                     <h3>⚠️ Error de CORS detectado</h3>
-                    <p>Estás abriendo este archivo directamente con doble clic (<code>file://</code>). Por seguridad, los navegadores bloquean la lectura de archivos locales (como el .csv).</p>
+                    <p>Estás abriendo este archivo directamente con doble clic (<code>file://</code>). Por seguridad, Chrome bloquea leer el CSV.</p>
                     <p><b>Solución:</b> Abre tu terminal en esta carpeta y ejecuta un servidor local:</p>
                     <code>python -m http.server 8000</code>
                     <p>Luego entra a: <a href="http://localhost:8000/visualizador.html" style="color:var(--accent)">http://localhost:8000/visualizador.html</a></p>
                 </div>
             `;
         } else {
+            logDebug("Iniciando descarga y parseo del CSV...");
+            
             Papa.parse("Examen_PreConocimiento_FullStack.csv", {
                 download: true,
                 header: true,
-                error: function(err) {
-                    document.getElementById('exam-container').innerHTML = `<div class="error-msg">Error cargando el archivo CSV: ${err.message}</div>`;
+                skipEmptyLines: true,
+                encoding: "UTF-8",
+                error: function(err, file, inputElem, reason) {
+                    logDebug("ERROR CRÍTICO: " + err.message);
+                    document.getElementById('exam-container').innerHTML = `<div class="error-msg">Error cargando CSV: ${err.message}</div>`;
                 },
                 complete: function(results) {
+                    logDebug("CSV parseado con éxito. Filas detectadas: " + results.data.length);
+                    
                     const container = document.getElementById('exam-container');
                     container.innerHTML = '';
                     
                     if (results.data.length === 0) {
-                         container.innerHTML = `<div class="error-msg">El archivo CSV parece estar vacío o mal codificado.</div>`;
+                         container.innerHTML = `<div class="error-msg">El CSV está vacío o no se pudo leer.</div>`;
                          return;
                     }
 
-                    results.data.forEach(row => {
-                        // Limpieza de claves por los BOM (Byte Order Marks)
+                    let loadedCount = 0;
+
+                    // Escapar html tags
+                    const escapeHtml = (unsafe) => {
+                        return (unsafe || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    };
+
+                    results.data.forEach((row, idx) => {
+                        // Limpiar los BOM characters invisibles que arroja Excel en UTF-8-SIG
                         const cleanRow = {};
                         for (let key in row) {
-                            cleanRow[key.replace(/^\uFEFF/, '')] = row[key];
+                            const cleanKey = key.trim().replace(/^\uFEFF/, '').replace(/[\u200B-\u200D\uFEFF]/g, '');
+                            cleanRow[cleanKey] = row[key];
                         }
                         
+                        // Si la fila no tiene pregunta, la ignoramos (filas en blanco de excel)
                         if(!cleanRow["PREGUNTA"]) return;
+                        loadedCount++;
                         
                         const ansMap = { 
                             'A': cleanRow["OPCIÓN A"], 
@@ -73,20 +102,15 @@
                         let html = `
                         <div class="question-card">
                             <div class="q-header">
-                                <span>Pregunta ${cleanRow["No. De pregunta"] || '?'} | Nivel Bloom: ${cleanRow["BLOOM"] || 'N/A'}</span>
+                                <span>Pregunta ${cleanRow["No. De pregunta"] || loadedCount} | Nivel Bloom: ${cleanRow["BLOOM"] || 'N/A'}</span>
                                 <span class="tag">${cleanRow["Modulo/Capitulo (Tags)"] || 'N/A'}</span>
                             </div>
-                            <div class="q-text">${cleanRow["PREGUNTA"]}</div>
+                            <div class="q-text">${escapeHtml(cleanRow["PREGUNTA"])}</div>
                             <div class="options">
                         `;
                         
-                        // Escapar tags HTML en las respuestas para que se vean como texto (ej. <section>)
-                        const escapeHtml = (unsafe) => {
-                            return (unsafe || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-                        };
-
                         ['A', 'B', 'C', 'D'].forEach(letter => {
-                            if(ansMap[letter]) {
+                            if(ansMap[letter] && ansMap[letter].trim() !== "") {
                                 const isCorrect = letter === correctLetter ? 'correct' : '';
                                 html += `<div class="option ${isCorrect}"><b>${letter})</b> ${escapeHtml(ansMap[letter])}</div>`;
                             }
@@ -99,6 +123,11 @@
                         
                         container.innerHTML += html;
                     });
+                    
+                    logDebug("Renderizado completo. Preguntas válidas en pantalla: " + loadedCount);
+                    if (loadedCount === 0) {
+                        logDebug("ADVERTENCIA: Se parseó el archivo pero no se encontró la columna 'PREGUNTA'. Nombres de columnas detectados: " + Object.keys(results.data[0]).join(', '));
+                    }
                 }
             });
         }
