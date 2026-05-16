@@ -6,7 +6,7 @@
     <title>Visualizador de Exámenes - Exam Creator</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
-        :root { --bg: #0d1117; --card: #161b22; --text: #c9d1d9; --accent: #58a6ff; --correct: #3fb950; --border: #30363d; }
+        :root { --bg: #0d1117; --card: #161b22; --text: #c9d1d9; --accent: #58a6ff; --correct: #3fb950; --border: #30363d; --error: #f85149; }
         body { font-family: -apple-system, sans-serif; background-color: var(--bg); color: var(--text); padding: 40px; margin: 0; }
         h1 { color: var(--accent); border-bottom: 2px solid var(--border); padding-bottom: 10px; }
         .question-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
@@ -16,6 +16,8 @@
         .option.correct { border-left: 4px solid var(--correct); background: rgba(63, 185, 80, 0.1); }
         .q-footer { margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--border); font-size: 0.9em; color: #8b949e; }
         .tag { background: #1f6feb; color: white; padding: 3px 8px; border-radius: 12px; font-size: 0.8em; }
+        .error-msg { background: rgba(248, 81, 73, 0.1); border-left: 4px solid var(--error); padding: 15px; margin: 20px 0; border-radius: 4px;}
+        code { background: #21262d; padding: 2px 5px; border-radius: 4px; font-family: monospace; }
     </style>
 </head>
 <body>
@@ -24,45 +26,82 @@
     <div id="exam-container">Cargando preguntas...</div>
 
     <script>
-        Papa.parse("Examen_PreConocimiento_FullStack.csv", {
-            download: true,
-            header: true,
-            complete: function(results) {
-                const container = document.getElementById('exam-container');
-                container.innerHTML = '';
-                
-                results.data.forEach(row => {
-                    if(!row["PREGUNTA"]) return;
+        // Verificación de protocolo (Evitar bloqueo CORS)
+        if (window.location.protocol === 'file:') {
+            document.getElementById('exam-container').innerHTML = `
+                <div class="error-msg">
+                    <h3>⚠️ Error de CORS detectado</h3>
+                    <p>Estás abriendo este archivo directamente con doble clic (<code>file://</code>). Por seguridad, los navegadores bloquean la lectura de archivos locales (como el .csv).</p>
+                    <p><b>Solución:</b> Abre tu terminal en esta carpeta y ejecuta un servidor local:</p>
+                    <code>python -m http.server 8000</code>
+                    <p>Luego entra a: <a href="http://localhost:8000/visualizador.html" style="color:var(--accent)">http://localhost:8000/visualizador.html</a></p>
+                </div>
+            `;
+        } else {
+            Papa.parse("Examen_PreConocimiento_FullStack.csv", {
+                download: true,
+                header: true,
+                error: function(err) {
+                    document.getElementById('exam-container').innerHTML = `<div class="error-msg">Error cargando el archivo CSV: ${err.message}</div>`;
+                },
+                complete: function(results) {
+                    const container = document.getElementById('exam-container');
+                    container.innerHTML = '';
                     
-                    const ansMap = { 'A': row["OPCIÓN A"], 'B': row["OPCIÓN B"], 'C': row["OPCIÓN C"], 'D': row["OPCIÓN D"] };
-                    const correctLetter = row["RESPUESTA CORRECTA"];
-                    
-                    let html = `
-                    <div class="question-card">
-                        <div class="q-header">
-                            <span>Pregunta ${row["No. De pregunta"]} | Nivel Bloom: ${row["BLOOM"]}</span>
-                            <span class="tag">${row["Modulo/Capitulo (Tags)"]}</span>
-                        </div>
-                        <div class="q-text">${row["PREGUNTA"]}</div>
-                        <div class="options">
-                    `;
-                    
-                    ['A', 'B', 'C', 'D'].forEach(letter => {
-                        if(ansMap[letter]) {
-                            const isCorrect = letter === correctLetter ? 'correct' : '';
-                            html += `<div class="option ${isCorrect}"><b>${letter})</b> ${ansMap[letter]}</div>`;
+                    if (results.data.length === 0) {
+                         container.innerHTML = `<div class="error-msg">El archivo CSV parece estar vacío o mal codificado.</div>`;
+                         return;
+                    }
+
+                    results.data.forEach(row => {
+                        // Limpieza de claves por los BOM (Byte Order Marks)
+                        const cleanRow = {};
+                        for (let key in row) {
+                            cleanRow[key.replace(/^\uFEFF/, '')] = row[key];
                         }
+                        
+                        if(!cleanRow["PREGUNTA"]) return;
+                        
+                        const ansMap = { 
+                            'A': cleanRow["OPCIÓN A"], 
+                            'B': cleanRow["OPCIÓN B"], 
+                            'C': cleanRow["OPCIÓN C"], 
+                            'D': cleanRow["OPCIÓN D"] 
+                        };
+                        const correctLetter = cleanRow["RESPUESTA CORRECTA"];
+                        
+                        let html = `
+                        <div class="question-card">
+                            <div class="q-header">
+                                <span>Pregunta ${cleanRow["No. De pregunta"] || '?'} | Nivel Bloom: ${cleanRow["BLOOM"] || 'N/A'}</span>
+                                <span class="tag">${cleanRow["Modulo/Capitulo (Tags)"] || 'N/A'}</span>
+                            </div>
+                            <div class="q-text">${cleanRow["PREGUNTA"]}</div>
+                            <div class="options">
+                        `;
+                        
+                        // Escapar tags HTML en las respuestas para que se vean como texto (ej. <section>)
+                        const escapeHtml = (unsafe) => {
+                            return (unsafe || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                        };
+
+                        ['A', 'B', 'C', 'D'].forEach(letter => {
+                            if(ansMap[letter]) {
+                                const isCorrect = letter === correctLetter ? 'correct' : '';
+                                html += `<div class="option ${isCorrect}"><b>${letter})</b> ${escapeHtml(ansMap[letter])}</div>`;
+                            }
+                        });
+                        
+                        html += `
+                            </div>
+                            <div class="q-footer">💡 <b>Justificación:</b> ${escapeHtml(cleanRow["FRAGMENTO"])}</div>
+                        </div>`;
+                        
+                        container.innerHTML += html;
                     });
-                    
-                    html += `
-                        </div>
-                        <div class="q-footer">💡 <b>Justificación:</b> ${row["FRAGMENTO"]}</div>
-                    </div>`;
-                    
-                    container.innerHTML += html;
-                });
-            }
-        });
+                }
+            });
+        }
     </script>
 </body>
 </html>
